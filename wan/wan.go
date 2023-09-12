@@ -2,8 +2,10 @@ package wan
 
 import (
 	"fmt"
-	"io"
 	"net"
+	"os"
+
+	"github.com/yymmiinngg/goargs"
 )
 
 /*
@@ -15,58 +17,62 @@ clientConn -> client_connection_port <==> lan_connection_port -> lanConn
 
 */
 
-var lanConns = make(chan net.Conn, 5)
+var lanConns = make(chan net.Conn, 1024)
 
 func Start() {
 
-	// 局域网的连接
-	go func() {
-		server, err := net.Listen("tcp", "127.0.0.1:6666")
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		defer server.Close()
-		fmt.Println("start lan server...")
-		for {
-			conn, err := server.Accept()
-			if err != nil {
-				fmt.Println(err)
-				break
-			}
-			fmt.Println("get lan connection...")
-			lanConns <- conn
-		}
-	}()
+	var argsArr = os.Args
+	template := `
+    Usage: {{COMMAND}} WAN {{OPTION}}
 
-	// 客户端的连接
-	func() {
-		server, err := net.Listen("tcp", "127.0.0.1:80")
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		defer server.Close()
-		fmt.Println("start client server...")
-		for {
-			clientConn, err := server.Accept()
-			if err != nil {
-				fmt.Println(err)
-				break
-			}
-			fmt.Println("get wan connection...")
-			// 处理客户端连接
-			go handlConn(clientConn, <-lanConns)
-		}
-	}()
+	+ -a, --application-port  # 开放的应用程序端口（ip:port, 默认：127.0.0.1:80）
+	* -s, --server-port       # 开放的服务端口（ip:port）
+	+ -i, --io-timeout        # 读写超时时长（单位：秒，默认：120)
 
-}
+    ? -h, --help              # 显示帮助后退出
+    ? -v, --version           # 显示版本后退出
+`
 
-func handlConn(clientConn, lanConn net.Conn) {
-	defer clientConn.Close()
-	defer lanConn.Close()
-	fmt.Println("send CONNECT...")
-	lanConn.Write([]byte("CONNECT"))
-	go io.Copy(clientConn, lanConn)
-	io.Copy(lanConn, clientConn)
+	// 定义变量
+	var applicationAddress string
+	var serverAddress string
+	var ioTimeout int
+
+	// 编译模板
+	args, err := goargs.Compile(template)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	// 绑定变量
+	args.StringOption("-a", &applicationAddress, "127.0.0.1:80")
+	args.StringOption("-s", &serverAddress, "")
+	args.IntOption("-i", &ioTimeout, 120)
+
+	// 处理参数
+	err = args.Parse(argsArr)
+
+	// 显示帮助
+	if args.HasItem("-h", "--help") {
+		fmt.Println(args.Usage())
+		return
+	}
+
+	// 显示版本
+	if args.HasItem("-v") {
+		fmt.Println("v0.0.1")
+		return
+	}
+
+	// 错误输出
+	if err != nil {
+		fmt.Println(err.Error())
+		fmt.Println("--------------------------------------------------")
+		fmt.Println(args.Usage())
+		return
+	}
+
+	serverInfo := MakeServerInfo(serverAddress, applicationAddress, ioTimeout)
+	serverInfo.StartServer()
 }

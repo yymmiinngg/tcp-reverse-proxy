@@ -2,9 +2,9 @@ package lan
 
 import (
 	"fmt"
-	"io"
-	"net"
-	"time"
+	"os"
+
+	"github.com/yymmiinngg/goargs"
 )
 
 /*
@@ -15,59 +15,68 @@ lanConn -> localConn
 
 */
 
-var lanConns = 0
-
 func Start() {
 
+	var argsArr = os.Args
+	template := `
+    Usage: {{COMMAND}} LAN {{OPTION}}
+
+	+ -a, --application-address  # 映射应用的TCP地址（格式：”ip:port“, 默认：127.0.0.1:80）
+	* -s, --server-address       # 关联的服务端TCP地址（ip:port）
+	+ -r, --max-ready-connection # 最大准备连接数（默认：5）
+	+ -c, --connect-timeout      # 连接超时时长（单位：秒，默认：10)
+	+ -i, --io-timeout           # 读写超时时长（单位：秒，默认：120)
+
+    ? -h, --help                 # 显示帮助后退出
+    ? -v, --version              # 显示版本后退出
+    `
+
+	// 编译模板
+	args, err := goargs.Compile(template)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	// 定义变量
+	var applicationAddress string
+	var serverAddress string
+
+	var maxReadyConnection, connectTimeout, ioTimeout int
+
+	// 绑定变量
+	args.StringOption("-a", &applicationAddress, "127.0.0.1:80")
+	args.StringOption("-s", &serverAddress, "")
+	args.IntOption("-r", &maxReadyConnection, 5)
+	args.IntOption("-c", &connectTimeout, 10)
+	args.IntOption("-i", &ioTimeout, 120)
+
+	// 处理参数
+	err = args.Parse(argsArr)
+
+	// 显示帮助
+	if args.HasItem("-h", "--help") {
+		fmt.Println(args.Usage())
+		return
+	}
+
+	// 显示版本
+	if args.HasItem("-v") {
+		fmt.Println("v0.0.1")
+		return
+	}
+
+	// 错误输出
+	if err != nil {
+		fmt.Println(err.Error())
+		fmt.Println("--------------------------------------------------")
+		fmt.Println(args.Usage())
+		return
+	}
+
 	// 局域网的连接
+	serverConnection := MakeServerConnectionPoolInfo(serverAddress, applicationAddress, maxReadyConnection, connectTimeout, ioTimeout)
 	for {
-		if lanConns >= 5 {
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		lanConn, err := net.DialTimeout("tcp", "127.0.0.1:6666", 5*time.Second)
-		if err != nil {
-			fmt.Println(err)
-			break
-		}
-		fmt.Printf("connect %d \n", lanConns)
-		lanConns++
-		go handlConn(lanConn)
+		serverConnection.GetServerConnect()
 	}
-
-}
-
-// 转发
-func handlConn(lanConn net.Conn) {
-	defer lanConn.Close()
-
-	// 远程的请求指令
-	var buff = make([]byte, len("CONNECT"))
-	size, err := lanConn.Read(buff)
-	if err != nil {
-		fmt.Println(err)
-		lanConns--
-		return
-	}
-	if string(buff[:size]) != "CONNECT" {
-		fmt.Println("no CONNECT...")
-		lanConns--
-		return
-	}
-
-	fmt.Println("get CONNECT...")
-
-	lanConns--
-
-	// 请求目的服务器
-	remoteConn, err := net.DialTimeout("tcp", "110.242.68.4:80", 5*time.Second)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer remoteConn.Close()
-	fmt.Println("req remote...")
-
-	go io.Copy(lanConn, remoteConn)
-	io.Copy(remoteConn, lanConn)
 }
