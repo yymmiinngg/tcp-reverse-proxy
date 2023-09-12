@@ -45,15 +45,15 @@ func main() {
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示帮助
-	if args.HasItem("-H", "--help") {
-		fmt.Println("--------------------------------------------------")
+	if args.HasItem("-h", "--help") {
 		fmt.Println(args.Usage())
+		return
 	}
 
 	// 显示版本
-	if args.HasItem("--version") {
-		fmt.Println("--------------------------------------------------")
+	if args.HasItem("-v", "--version") {
 		fmt.Println("v0.0.1")
+		return
 	}
 
 	// 错误输出

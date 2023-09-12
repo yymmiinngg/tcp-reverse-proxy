@@ -60,7 +60,7 @@ func Start() {
 	}
 
 	// 显示版本
-	if args.HasItem("-v") {
+	if args.HasItem("-v", "--version") {
 		fmt.Println("v0.0.1")
 		return
 	}
