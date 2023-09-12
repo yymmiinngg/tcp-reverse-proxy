@@ -13,6 +13,21 @@ import (
 	"github.com/yymmiinngg/goargs"
 )
 
+// Name Name
+var Name string = "tcpt"
+
+// Version Version
+var Version string = "dev"
+
+// Platform Platform
+var Platform string = "unknow"
+
+// BuildTime BuildTime
+var BuildTime string = "unknow"
+
+// GoVersion GoVersion
+var GoVersion string = "unknow"
+
 func main() {
 
 	// 这里可以替换成 `os.Args` 以处理控制台命令行
@@ -39,15 +54,6 @@ func main() {
 
     ? -h, --help     # 显示帮助后退出
     ? -v, --version  # 显示版本后退出
-
-	本程序用于将局域网端口反向映射到公网，连接链路如下：
-    -------------------------------------------+-------------------------------------
-    lan                                        | wan
-    -------------------------------------------+-------------------------------------
-    内网应用地址             服务端地址        |    转发端口         公网应用端口
-    application-address <--> server-address <- | -> server-port <--> application-port
-    -------------------------------------------+-------------------------------------
-
 	`
 
 	// 定义变量
@@ -69,7 +75,10 @@ func main() {
 
 	// 显示版本
 	if args.HasItem("-v", "--version") {
-		fmt.Println("v0.0.1")
+		fmt.Println("Version  :", Name, Version)
+		fmt.Println("BuildTime:", BuildTime)
+		fmt.Println("Platform :", Platform)
+		fmt.Println("GoVersion:", GoVersion)
 		return
 	}
 
@@ -131,7 +140,11 @@ func readLines(path string) ([]string, error) {
 	var lines []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		lines = append(lines, strings.TrimSpace(scanner.Text()))
+		line := strings.TrimSpace(scanner.Text())
+		if strings.Index(line, "#") == 0 {
+			continue
+		}
+		lines = append(lines, line)
 	}
 	return lines, scanner.Err()
 }
