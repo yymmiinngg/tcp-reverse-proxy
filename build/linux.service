@@ -1,0 +1,18 @@
+[Unit]
+Description=TCP-Tunnel
+After=network-online.target
+Wants=network-online.target systemd-networkd-wait-online.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+Restart=always
+RestartSec=5
+PIDFile={{appPath}}/pid
+ExecStart={{appPath}}/bin/start.sh {{config}}
+ExecReload={{appPath}}/bin/restart.sh {{config}}
+ExecStop={{appPath}}/bin/stop.sh
+
+[Install]
+WantedBy=multi-user.target

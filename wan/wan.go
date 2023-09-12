@@ -2,8 +2,6 @@ package wan
 
 import (
 	"fmt"
-	"net"
-	"os"
 
 	"github.com/yymmiinngg/goargs"
 )
@@ -17,11 +15,8 @@ clientConn -> client_connection_port <==> lan_connection_port -> lanConn
 
 */
 
-var lanConns = make(chan net.Conn, 1024)
+func Start(argsArr []string) {
 
-func Start() {
-
-	var argsArr = os.Args
 	template := `
     Usage: {{COMMAND}} WAN {{OPTION}}
 

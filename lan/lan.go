@@ -2,7 +2,6 @@ package lan
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/yymmiinngg/goargs"
 )
@@ -15,9 +14,8 @@ lanConn -> localConn
 
 */
 
-func Start() {
+func Start(argsArr []string) {
 
-	var argsArr = os.Args
 	template := `
     Usage: {{COMMAND}} LAN {{OPTION}}
 

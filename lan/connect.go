@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+var log = logger.Logger{Mode: "LAN"}
+
 type ServerConnectionPoolInfo struct {
 	connectTimeout     int
 	ioTimeout          int
@@ -59,7 +61,7 @@ func (it *ServerConnectionPoolInfo) GetServerConnect() {
 		lanConn, err = net.DialTimeout("tcp", it.serverAddress, time.Duration(it.connectTimeout)*time.Second)
 		if err != nil {
 			errCount++
-			logger.Error(err, "connect to server error", fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
+			log.Error(err, "connect to server error", fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
 			if errCount <= 3 {
 				time.Sleep(100 * time.Millisecond)
 			} else if errCount <= 8 {
@@ -69,7 +71,7 @@ func (it *ServerConnectionPoolInfo) GetServerConnect() {
 			}
 			continue
 		}
-		logger.Info("connect to server", lanConn.LocalAddr().String(), "->", lanConn.RemoteAddr().String(), fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
+		log.Info("connect to server", lanConn.LocalAddr().String(), "->", lanConn.RemoteAddr().String(), fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
 		break
 	}
 	it.addReady()
@@ -93,12 +95,12 @@ func (it *serverConnectionBundle) handConn() {
 	var buff = make([]byte, len(config.PCMD_CONNECT))
 	size, err := io.ReadFull(it.lanConn, buff)
 	if err != nil {
-		logger.Error(err, "read from server error")
+		log.Error(err, "read from server error")
 		it.serverConnectionPoolInfo.subReady()
 		return
 	}
 	if string(buff[:size]) != config.PCMD_CONNECT {
-		logger.Info("no command '" + config.PCMD_CONNECT + "' found")
+		log.Info("no command '" + config.PCMD_CONNECT + "' found")
 		it.serverConnectionPoolInfo.subReady()
 		return
 	}
@@ -112,18 +114,18 @@ func (it *serverConnectionBundle) startRelay() {
 	// 请求目的服务器
 	remoteConn, err := net.DialTimeout("tcp", it.serverConnectionPoolInfo.applicationAddress, time.Duration(it.serverConnectionPoolInfo.connectTimeout)*time.Second)
 	if err != nil {
-		logger.Error(err, "connect to application error")
+		log.Error(err, "connect to application error")
 		return
 	}
-	logger.Info("connect to application", remoteConn.LocalAddr().String(), "->", remoteConn.RemoteAddr().String())
+	log.Info("connect to application", remoteConn.LocalAddr().String(), "->", remoteConn.RemoteAddr().String())
 
 	// 退出转发
 	defer func() {
 		remoteConn.Close()
-		logger.Info("break", it.lanConn.LocalAddr().String(), "</>", remoteConn.LocalAddr().String())
+		log.Info("break", it.lanConn.LocalAddr().String(), "</>", remoteConn.LocalAddr().String())
 	}()
 
 	// 转发
-	logger.Info("relay", it.lanConn.LocalAddr().String(), "<->", remoteConn.LocalAddr().String())
+	log.Info("relay", it.lanConn.LocalAddr().String(), "<->", remoteConn.LocalAddr().String())
 	nets.Relay(it.lanConn, remoteConn, it.serverConnectionPoolInfo.ioTimeout)
 }

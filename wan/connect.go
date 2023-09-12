@@ -7,10 +7,13 @@ import (
 	nets "tcp-tunnel/net"
 )
 
+var log = logger.Logger{Mode: "WAN"}
+
 type ServerInfo struct {
 	ioTimeout          int
 	serverAddress      string
 	applicationAddress string
+	lanConns           chan net.Conn
 }
 
 func MakeServerInfo(serverAddress, applicationAddress string, ioTimeout int) *ServerInfo {
@@ -18,6 +21,7 @@ func MakeServerInfo(serverAddress, applicationAddress string, ioTimeout int) *Se
 		ioTimeout:          ioTimeout,
 		serverAddress:      serverAddress,
 		applicationAddress: applicationAddress,
+		lanConns:           make(chan net.Conn, 1024),
 	}
 }
 
@@ -28,39 +32,39 @@ func (it *ServerInfo) StartServer() {
 	go func() {
 		server, err := net.Listen("tcp", it.serverAddress)
 		if err != nil {
-			logger.Error(err, "listen server port error")
+			log.Error(err, "listen server port error")
 			return
 		}
 		defer server.Close()
-		logger.Info("start server port...")
+		log.Info("start server port...")
 		for {
 			lanConn, err := server.Accept()
 			if err != nil {
-				logger.Error(err, "accept server connection error")
+				log.Error(err, "accept server connection error")
 				break
 			}
-			logger.Info("get a lan connection", lanConn.LocalAddr().String(), "<-", lanConn.RemoteAddr().String())
-			lanConns <- lanConn
+			log.Info("get a lan connection", lanConn.LocalAddr().String(), "<-", lanConn.RemoteAddr().String())
+			it.lanConns <- lanConn
 		}
 	}()
 
 	// 启动应用端监听
 	server, err := net.Listen("tcp", it.applicationAddress)
 	if err != nil {
-		logger.Error(err, "listen application port error")
+		log.Error(err, "listen application port error")
 		return
 	}
 	defer server.Close()
-	logger.Info("start client server...")
+	log.Info("start client server...")
 	for {
 		clientConn, err := server.Accept()
 		if err != nil {
-			logger.Error(err, "accept application connection error")
+			log.Error(err, "accept application connection error")
 			break
 		}
-		logger.Info("get a application connection", clientConn.LocalAddr().String(), "<-", clientConn.RemoteAddr().String())
+		log.Info("get a application connection", clientConn.LocalAddr().String(), "<-", clientConn.RemoteAddr().String())
 		// 处理客户端连接
-		go it.handlConn(clientConn, <-lanConns)
+		go it.handlConn(clientConn, <-it.lanConns)
 	}
 }
 
@@ -68,13 +72,13 @@ func (it *ServerInfo) handlConn(clientConn, lanConn net.Conn) {
 	defer func() {
 		clientConn.Close()
 		lanConn.Close()
-		logger.Info("break", clientConn.RemoteAddr().String(), "</>", lanConn.RemoteAddr().String())
+		log.Info("break", clientConn.RemoteAddr().String(), "</>", lanConn.RemoteAddr().String())
 	}()
 
 	// 发送连接指令
 	lanConn.Write([]byte(config.PCMD_CONNECT))
 
 	//  转发
-	logger.Info("relay", clientConn.RemoteAddr().String(), "<->", lanConn.RemoteAddr().String())
+	log.Info("relay", clientConn.RemoteAddr().String(), "<->", lanConn.RemoteAddr().String())
 	nets.Relay(clientConn, lanConn, it.ioTimeout)
 }
