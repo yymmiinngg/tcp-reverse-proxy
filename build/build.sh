@@ -8,8 +8,8 @@ distDir=$buildDir/dist
 mainDir=$buildDir/..
 cd $mainDir
 
-# GOOS=linux
-# GOARCH=amd64
+GOOS=linux
+GOARCH=amd64
 appName=tcpt
 appVersion=$(git describe --tags 2>/dev/null || date +"%Y%m%d%H%M%S")
 appPlatform=$GOOS/$GOARCH
