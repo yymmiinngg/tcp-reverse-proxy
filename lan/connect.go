@@ -5,7 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
-	"tcp-tunnel/config"
+	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
 	nets "tcp-tunnel/net"
 	"time"
@@ -21,9 +21,10 @@ type ServerConnectionPoolInfo struct {
 	readyConnect       int // 准备的连接
 	serverAddress      string
 	applicationAddress string
+	handshaker         *core.Handshaker
 }
 
-func MakeServerConnectionPoolInfo(serverAddress, applicationAddress string, maxReadyConnect int, connectTimeout, ioTimeout int) *ServerConnectionPoolInfo {
+func MakeServerConnectionPoolInfo(serverAddress, applicationAddress, handshakerKey string, maxReadyConnect int, connectTimeout, ioTimeout int) *ServerConnectionPoolInfo {
 	return &ServerConnectionPoolInfo{
 		connectTimeout:     connectTimeout,
 		ioTimeout:          ioTimeout,
@@ -32,6 +33,7 @@ func MakeServerConnectionPoolInfo(serverAddress, applicationAddress string, maxR
 		readyConnect:       0,
 		serverAddress:      serverAddress,
 		applicationAddress: applicationAddress,
+		handshaker:         core.MakeHandshaker(handshakerKey),
 	}
 }
 
@@ -86,21 +88,21 @@ type serverConnectionBundle struct {
 	serverConnectionPoolInfo *ServerConnectionPoolInfo
 }
 
-// 处理连接f
+// 处理连接
 func (it *serverConnectionBundle) handConn() {
 
 	defer it.lanConn.Close()
 
-	// 处理远程的请求指令
-	var buff = make([]byte, len(config.PCMD_CONNECT))
-	size, err := io.ReadFull(it.lanConn, buff)
+	// 处理远程的握手
+	var buff = make([]byte, core.HandshakeDataLength)
+	_, err := io.ReadFull(it.lanConn, buff)
 	if err != nil {
 		log.Error(err, "read from server error")
 		it.serverConnectionPoolInfo.subReady()
 		return
 	}
-	if string(buff[:size]) != config.PCMD_CONNECT {
-		log.Info("no command '" + config.PCMD_CONNECT + "' found")
+	if !it.serverConnectionPoolInfo.handshaker.CheckHandshake([64]byte(buff)) {
+		log.Info("handshake fail")
 		it.serverConnectionPoolInfo.subReady()
 		return
 	}

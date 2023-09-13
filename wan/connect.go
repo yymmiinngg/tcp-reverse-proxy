@@ -2,7 +2,7 @@ package wan
 
 import (
 	"net"
-	"tcp-tunnel/config"
+	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
 	nets "tcp-tunnel/net"
 )
@@ -10,17 +10,19 @@ import (
 var log = logger.Logger{Mode: "WAN"}
 
 type ServerInfo struct {
-	ioTimeout          int
 	serverAddress      string
 	applicationAddress string
+	handshaker         *core.Handshaker
+	ioTimeout          int
 	lanConns           chan net.Conn
 }
 
-func MakeServerInfo(serverAddress, applicationAddress string, ioTimeout int) *ServerInfo {
+func MakeServerInfo(serverAddress, applicationAddress, handshakerKey string, ioTimeout int) *ServerInfo {
 	return &ServerInfo{
-		ioTimeout:          ioTimeout,
 		serverAddress:      serverAddress,
 		applicationAddress: applicationAddress,
+		handshaker:         core.MakeHandshaker(handshakerKey),
+		ioTimeout:          ioTimeout,
 		lanConns:           make(chan net.Conn, 1024),
 	}
 }
@@ -75,8 +77,9 @@ func (it *ServerInfo) handlConn(clientConn, lanConn net.Conn) {
 		log.Info("break", clientConn.RemoteAddr().String(), "</>", lanConn.RemoteAddr().String())
 	}()
 
-	// 发送连接指令
-	lanConn.Write([]byte(config.PCMD_CONNECT))
+	// 发送握手指令
+	handshake := it.handshaker.MakeHandshake()
+	lanConn.Write(handshake[:])
 
 	//  转发
 	log.Info("relay", clientConn.RemoteAddr().String(), "<->", lanConn.RemoteAddr().String())

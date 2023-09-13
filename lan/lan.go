@@ -24,6 +24,7 @@ func Start(argsArr []string) {
 	+ -r, --max-ready-connection # 最大准备连接数（默认：5）
 	+ -c, --connect-timeout      # 连接超时时长（单位：秒，默认：10)
 	+ -i, --io-timeout           # 读写超时时长（单位：秒，默认：120)
+	+ -k, --handshake-key        # 握手密钥，防止WAN端被非法使用
 
     ? -h, --help                 # 显示帮助后退出
     ? -v, --version              # 显示版本后退出
@@ -39,6 +40,7 @@ func Start(argsArr []string) {
 	// 定义变量
 	var applicationAddress string
 	var serverAddress string
+	var handshakeKey string
 
 	var maxReadyConnection, connectTimeout, ioTimeout int
 
@@ -48,6 +50,7 @@ func Start(argsArr []string) {
 	args.IntOption("-r", &maxReadyConnection, 5)
 	args.IntOption("-c", &connectTimeout, 10)
 	args.IntOption("-i", &ioTimeout, 120)
+	args.StringOption("-k", &handshakeKey, "l3I19DqQ3T1eYjKn")
 
 	// 处理参数
 	err = args.Parse(argsArr)
@@ -73,7 +76,7 @@ func Start(argsArr []string) {
 	}
 
 	// 局域网的连接
-	serverConnection := MakeServerConnectionPoolInfo(serverAddress, applicationAddress, maxReadyConnection, connectTimeout, ioTimeout)
+	serverConnection := MakeServerConnectionPoolInfo(serverAddress, applicationAddress, handshakeKey, maxReadyConnection, connectTimeout, ioTimeout)
 	for {
 		serverConnection.GetServerConnect()
 	}

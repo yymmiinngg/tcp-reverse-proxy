@@ -23,6 +23,7 @@ func Start(argsArr []string) {
 	+ -a, --application-port  # 开放的应用程序端口（ip:port, 默认：127.0.0.1:80）
 	* -s, --server-port       # 开放的服务端口（ip:port）
 	+ -i, --io-timeout        # 读写超时时长（单位：秒，默认：120)
+	+ -k, --handshake-key        # 握手密钥，防止WAN端被非法使用
 
     ? -h, --help              # 显示帮助后退出
     ? -v, --version           # 显示版本后退出
@@ -31,6 +32,7 @@ func Start(argsArr []string) {
 	// 定义变量
 	var applicationAddress string
 	var serverAddress string
+	var handshakeKey string
 	var ioTimeout int
 
 	// 编译模板
@@ -44,6 +46,7 @@ func Start(argsArr []string) {
 	args.StringOption("-a", &applicationAddress, "127.0.0.1:80")
 	args.StringOption("-s", &serverAddress, "")
 	args.IntOption("-i", &ioTimeout, 120)
+	args.StringOption("-k", &handshakeKey, "l3I19DqQ3T1eYjKn")
 
 	// 处理参数
 	err = args.Parse(argsArr)
@@ -68,6 +71,6 @@ func Start(argsArr []string) {
 		return
 	}
 
-	serverInfo := MakeServerInfo(serverAddress, applicationAddress, ioTimeout)
+	serverInfo := MakeServerInfo(serverAddress, applicationAddress, handshakeKey, ioTimeout)
 	serverInfo.StartServer()
 }
