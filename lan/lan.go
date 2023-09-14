@@ -2,39 +2,37 @@ package lan
 
 import (
 	"fmt"
+	"os"
+	"tcp-tunnel/config"
+	"tcp-tunnel/logger"
 
 	"github.com/yymmiinngg/goargs"
 )
 
-/*
-
-局域网端：
-
-lanConn -> localConn
-
-*/
-
-func Start(argsArr []string) {
+func Start(argsArr []string, log *logger.Logger) {
 
 	template := `
     Usage: {{COMMAND}} LAN {{OPTION}}
 
-	+ -a, --application-address  # 映射应用的TCP地址（格式：”ip:port“, 默认：127.0.0.1:80）
-	* -s, --server-address       # 关联的服务端TCP地址（ip:port）
-	+ -r, --max-ready-connection # 最大准备连接数（默认：5）
-	+ -c, --connect-timeout      # 连接超时时长（单位：秒，默认：10)
-	+ -i, --io-timeout           # 读写超时时长（单位：秒，默认：120)
-	+ -k, --handshake-key        # 握手密钥，防止WAN端被非法使用
+	+ -a, --application-address  # Mapped TCP Address for the Application, (Format: ip:port,
+	#                              Default: 127.0.0.1:80)
+	* -s, --server-address       # Associated Server TCP Address (Format: ip:port)
+	+ -r, --max-ready-connection # Maximum Ready Connection Count (Default: 5), Ready
+	#                              connections help improve client connection speed. The
+	#                              quantity limit is 1024.
+	+ -c, --connect-timeout      # Connection Timeout Duration (Unit: Seconds, Default: 10)
+	+ -i, --io-timeout           # Read/Write Timeout Duration (Unit: Seconds, Default: 120)
+	+ -k, --handshake-key        # Handshake Key, Preventing Unauthorized Use of WAN Port
 
-    ? -h, --help                 # 显示帮助后退出
-    ? -v, --version              # 显示版本后退出
+    ? -h, --help                 # Show Help and Exit
+    ? -v, --version              # Show Version and Exit
     `
 
 	// 编译模板
 	args, err := goargs.Compile(template)
 	if err != nil {
 		fmt.Println(err.Error())
-		return
+		os.Exit(1)
 	}
 
 	// 定义变量
@@ -50,7 +48,7 @@ func Start(argsArr []string) {
 	args.IntOption("-r", &maxReadyConnection, 5)
 	args.IntOption("-c", &connectTimeout, 10)
 	args.IntOption("-i", &ioTimeout, 120)
-	args.StringOption("-k", &handshakeKey, "l3I19DqQ3T1eYjKn")
+	args.StringOption("-k", &handshakeKey, config.DEFAULT_HANDSHAKE_KEY)
 
 	// 处理参数
 	err = args.Parse(argsArr)
@@ -58,25 +56,51 @@ func Start(argsArr []string) {
 	// 显示帮助
 	if args.HasItem("-h", "--help") {
 		fmt.Println(args.Usage())
-		return
+		os.Exit(1)
 	}
 
 	// 显示版本
 	if args.HasItem("-v", "--version") {
 		fmt.Println("v0.0.1")
-		return
+		os.Exit(1)
 	}
 
 	// 错误输出
 	if err != nil {
 		fmt.Println(err.Error())
-		fmt.Println("--------------------------------------------------")
-		fmt.Println(args.Usage())
-		return
+		os.Exit(1)
+	}
+
+	if maxReadyConnection < 1 {
+		fmt.Println("The minimum ready connection count is 1")
+		os.Exit(1)
+	}
+
+	if maxReadyConnection > 1024 {
+		fmt.Println("The maximum ready connection count is 1024")
+		os.Exit(1)
+	}
+
+	if connectTimeout == 0 {
+		fmt.Println("The connection timeout duration cannot be less than 1")
+		os.Exit(1)
+	}
+
+	if ioTimeout == 0 {
+		fmt.Println("The io timeout duration cannot be less than 1")
+		os.Exit(1)
 	}
 
 	// 局域网的连接
-	serverConnection := MakeServerConnectionPoolInfo(serverAddress, applicationAddress, handshakeKey, maxReadyConnection, connectTimeout, ioTimeout)
+	serverConnection := MakeServerConnectionPoolInfo(
+		serverAddress,
+		applicationAddress,
+		handshakeKey,
+		maxReadyConnection,
+		connectTimeout,
+		ioTimeout,
+		log,
+	)
 	for {
 		serverConnection.GetServerConnect()
 	}

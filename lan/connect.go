@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-var log = logger.Logger{Mode: "LAN"}
-
 type ServerConnectionPoolInfo struct {
 	connectTimeout     int
 	ioTimeout          int
@@ -22,9 +20,10 @@ type ServerConnectionPoolInfo struct {
 	serverAddress      string
 	applicationAddress string
 	handshaker         *core.Handshaker
+	log                *logger.Logger
 }
 
-func MakeServerConnectionPoolInfo(serverAddress, applicationAddress, handshakerKey string, maxReadyConnect int, connectTimeout, ioTimeout int) *ServerConnectionPoolInfo {
+func MakeServerConnectionPoolInfo(serverAddress, applicationAddress, handshakerKey string, maxReadyConnect int, connectTimeout, ioTimeout int, log *logger.Logger) *ServerConnectionPoolInfo {
 	return &ServerConnectionPoolInfo{
 		connectTimeout:     connectTimeout,
 		ioTimeout:          ioTimeout,
@@ -34,6 +33,7 @@ func MakeServerConnectionPoolInfo(serverAddress, applicationAddress, handshakerK
 		serverAddress:      serverAddress,
 		applicationAddress: applicationAddress,
 		handshaker:         core.MakeHandshaker(handshakerKey),
+		log:                log,
 	}
 }
 
@@ -63,7 +63,7 @@ func (it *ServerConnectionPoolInfo) GetServerConnect() {
 		lanConn, err = net.DialTimeout("tcp", it.serverAddress, time.Duration(it.connectTimeout)*time.Second)
 		if err != nil {
 			errCount++
-			log.Error(err, "connect to server error", fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
+			it.log.Error(err, "connect to server error", fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
 			if errCount <= 3 {
 				time.Sleep(100 * time.Millisecond)
 			} else if errCount <= 8 {
@@ -73,7 +73,7 @@ func (it *ServerConnectionPoolInfo) GetServerConnect() {
 			}
 			continue
 		}
-		log.Info("connect to server", lanConn.LocalAddr().String(), "->", lanConn.RemoteAddr().String(), fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
+		it.log.Debug("connect to server", lanConn.LocalAddr().String(), "->", lanConn.RemoteAddr().String(), fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
 		break
 	}
 	it.addReady()
@@ -90,19 +90,18 @@ type serverConnectionBundle struct {
 
 // 处理连接
 func (it *serverConnectionBundle) handConn() {
-
 	defer it.lanConn.Close()
 
 	// 处理远程的握手
 	var buff = make([]byte, core.HandshakeDataLength)
 	_, err := io.ReadFull(it.lanConn, buff)
 	if err != nil {
-		log.Error(err, "read from server error")
+		it.serverConnectionPoolInfo.log.Debug("read from server error: " + err.Error())
 		it.serverConnectionPoolInfo.subReady()
 		return
 	}
 	if !it.serverConnectionPoolInfo.handshaker.CheckHandshake([64]byte(buff)) {
-		log.Info("handshake fail")
+		it.serverConnectionPoolInfo.log.Debug("handshake fail")
 		it.serverConnectionPoolInfo.subReady()
 		return
 	}
@@ -116,18 +115,18 @@ func (it *serverConnectionBundle) startRelay() {
 	// 请求目的服务器
 	remoteConn, err := net.DialTimeout("tcp", it.serverConnectionPoolInfo.applicationAddress, time.Duration(it.serverConnectionPoolInfo.connectTimeout)*time.Second)
 	if err != nil {
-		log.Error(err, "connect to application error")
+		it.serverConnectionPoolInfo.log.Debug("connect to application error: " + err.Error())
 		return
 	}
-	log.Info("connect to application", remoteConn.LocalAddr().String(), "->", remoteConn.RemoteAddr().String())
+	it.serverConnectionPoolInfo.log.Debug("connect to application", remoteConn.LocalAddr().String(), "->", remoteConn.RemoteAddr().String())
 
 	// 退出转发
 	defer func() {
 		remoteConn.Close()
-		log.Info("break", it.lanConn.LocalAddr().String(), "</>", remoteConn.LocalAddr().String())
+		it.serverConnectionPoolInfo.log.Debug("break", it.lanConn.LocalAddr().String(), "</>", remoteConn.LocalAddr().String())
 	}()
 
 	// 转发
-	log.Info("relay", it.lanConn.LocalAddr().String(), "<->", remoteConn.LocalAddr().String())
+	it.serverConnectionPoolInfo.log.Debug("relay", it.lanConn.LocalAddr().String(), "<->", remoteConn.LocalAddr().String())
 	nets.Relay(it.lanConn, remoteConn, it.serverConnectionPoolInfo.ioTimeout)
 }

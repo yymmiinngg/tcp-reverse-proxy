@@ -1,8 +1,8 @@
-# 本程序用于将局域网端口反向映射到公网，连接链路如下：
+# This program is used to reverse map LAN ports to the public network, and the
+# connection link is as follows:
 # -------------------------------------------+-------------------------------------
 # lan                                        | wan
 # -------------------------------------------+-------------------------------------
-# 内网应用地址              服务端地址         |    转发端口          公网应用端口
 # application-address <--> server-address <- | -> server-port <--> application-port
 # -------------------------------------------+-------------------------------------
 

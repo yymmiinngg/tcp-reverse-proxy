@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"tcp-tunnel/config"
 
 	"golang.org/x/exp/slices"
 )
@@ -18,7 +19,7 @@ const HandshakeDataLength = 64
 
 func MakeHandshaker(key string) *Handshaker {
 	return &Handshaker{
-		staticKey: "Gqmmh82CgEsRVQWz",
+		staticKey: config.DEFAULT_HANDSHAKE_KEY_SALT,
 		userKey:   key,
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"tcp-tunnel/lan"
+	"tcp-tunnel/logger"
 	"tcp-tunnel/wan"
 
 	"github.com/yymmiinngg/goargs"
@@ -39,26 +40,33 @@ func main() {
 	
 	# MODE: { LAN, WAN, SCRIPT }
 	
-	#   LAN     处于子网，通常无公网IP的局域网服务器
-	#   WAN     处于公网，具备公网IP的互联网服务器
-	#   SCRIPT  加载脚本文件，脚本文件中可设置多行参数
+	#   LAN     Run a LAN client to forward traffic from WAN to the application port
+	#   WAN     Run a WAN server to forward traffic from user clients to LAN client
+	#   SCRIPT  Load a script file to run multiple LAN or WAN-side programs.
 
 	# SCRIPT-FILE:
 	
-	#   脚本文件中可配置多个隧道连接，格式如下：
+	#   Script file content like (Multiple line)：
 
 	#   WAN -a 0.0.0.0:8081 -s 0.0.0.0:9981
 	#   WAN -a 0.0.0.0:8082 -s 0.0.0.0:9982
 	#   LAN -a 127.0.0.1:8081 -s 127.0.0.1:9981
 	#   LAN -a 127.0.0.1:8082 -s 127.0.0.1:9982
 
-    ? -h, --help     # 显示帮助后退出
-    ? -v, --version  # 显示版本后退出
+	+ -l, --logger   # Output log to where:
+	#                    - console: Out to console (Default)
+	#                    - User specified file, like: /var/log/tcprp-out.log
+	? -d, --debug    # Output debug message, There are a lot of logs in debug mode
+
+    ? -h, --help     # Show Help and Exit
+    ? -v, --version  # Show Version and Exit
 	`
 
 	// 定义变量
 	var mode_ string
 	var script_ string
+	var logger_ string
+	var debug bool
 
 	// 编译模板
 	args, err := goargs.Compile(template)
@@ -69,12 +77,14 @@ func main() {
 	// 绑定变量
 	args.StringOperan("MODE", &mode_, "")
 	args.StringOperan("SCRIPT-FILE", &script_, "")
+	args.StringOption("-l", &logger_, "console")
+	debug = args.Has("-d", false)
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示版本
-	if args.HasItem("-v", "--version") {
+	if args.Has("-v", false) {
 		fmt.Println("Version  :", Name, Version)
 		fmt.Println("BuildTime:", BuildTime)
 		fmt.Println("Platform :", Platform)
@@ -83,7 +93,7 @@ func main() {
 	}
 
 	// 显示帮助
-	if args.HasItem("-h", "--help") && (mode_ == "" || !strings.Contains(" LAN | WAN ", strings.ToUpper(mode_))) {
+	if args.Has("-h", false) && (mode_ == "" || !strings.Contains(" LAN | WAN ", strings.ToUpper(mode_))) {
 		fmt.Println(args.Usage())
 		return
 	}
@@ -91,15 +101,24 @@ func main() {
 	// 错误输出
 	if err != nil {
 		fmt.Println(err.Error())
-		fmt.Println(args.Usage())
+		os.Exit(1)
+	}
+
+	// 创建日志对象
+	log, err := logger.MakeLogger(mode_, logger_, debug)
+	if err != nil {
+		fmt.Println(err.Error())
 		os.Exit(1)
 	}
 
 	var start = func(mode string, argsarr []string) {
 		if strings.ToLower(mode) == "lan" {
-			lan.Start(argsarr)
+			lan.Start(argsarr, log)
 		} else if strings.ToLower(mode) == "wan" {
-			wan.Start(argsarr)
+			wan.Start(argsarr, log)
+		} else if strings.ToLower(mode) == "script" {
+			fmt.Printf("Can't run script mode in script file\n")
+			os.Exit(1)
 		} else {
 			fmt.Printf("Unknow mode %s\n", mode)
 			os.Exit(1)
@@ -108,7 +127,7 @@ func main() {
 
 	if strings.ToLower(mode_) == "script" {
 		if script_ == "" {
-			fmt.Println("Need argument SCRIPT-FILE in SCRIPT mode")
+			fmt.Println("In SCRIPT mode, the parameter SCRIPT-FILE is mandatory.")
 			os.Exit(1)
 		}
 		cmdLines, err := readLines(script_)
