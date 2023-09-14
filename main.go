@@ -78,7 +78,8 @@ func main() {
 	args.StringOperan("MODE", &mode_, "")
 	args.StringOperan("SCRIPT-FILE", &script_, "")
 	args.StringOption("-l", &logger_, "console")
-	debug = args.Has("-d", false)
+	args.BoolOption("-d", &debug, false)
+	// debug = args.Has("-d", false)
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
@@ -92,16 +93,16 @@ func main() {
 		return
 	}
 
-	// 显示帮助
-	if args.Has("-h", false) && (mode_ == "" || !strings.Contains(" LAN | WAN ", strings.ToUpper(mode_))) {
-		fmt.Println(args.Usage())
-		return
-	}
-
 	// 错误输出
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
+	}
+
+	// 显示帮助
+	if args.Has("-h", false) && (mode_ == "" || !strings.Contains(" LAN | WAN | SCRIPT", strings.ToUpper(mode_))) {
+		fmt.Println(args.Usage())
+		return
 	}
 
 	// 创建日志对象
@@ -143,7 +144,6 @@ func main() {
 			go start(cmds[0], cmds)
 		}
 		time.Sleep(1000 * time.Hour)
-
 	} else {
 		start(mode_, os.Args)
 	}

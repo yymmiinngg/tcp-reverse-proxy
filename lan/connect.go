@@ -105,6 +105,8 @@ func (it *serverConnectionBundle) handConn() {
 		it.serverConnectionPoolInfo.subReady()
 		return
 	}
+	// 原文响应
+	it.lanConn.Write(buff)
 
 	// 开始转发
 	it.startRelay()

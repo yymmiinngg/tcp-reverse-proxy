@@ -51,7 +51,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	args.StringOption("-k", &handshakeKey, config.DEFAULT_HANDSHAKE_KEY)
 
 	// 处理参数
-	err = args.Parse(argsArr)
+	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示帮助
 	if args.HasItem("-h", "--help") {
