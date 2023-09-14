@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strconv"
+	"sync"
 	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
 	nets "tcp-tunnel/net"
@@ -20,6 +20,7 @@ type ServerInfo struct {
 	handshaker         *core.Handshaker
 	ioTimeout          int
 	lanConns           chan net.Conn
+	lanConnsLock       sync.Locker
 	log                *logger.Logger
 }
 
@@ -34,40 +35,53 @@ func MakeServerInfo(serverAddress, applicationAddress, handshakerKey string, ioT
 	}
 }
 
+func (it *ServerInfo) Close() {
+	it.lanConnsLock.Lock()
+	defer it.lanConnsLock.Unlock()
+	for len(it.lanConns) > 0 {
+		lanConn := <-it.lanConns
+		lanConn.Close()
+	}
+}
+
 // 局域网的连接
 func (it *ServerInfo) StartServer() {
 
+	lanServer, err := net.Listen("tcp", it.serverAddress)
+	if err != nil {
+		it.log.Error(err, "listen lan server port error")
+		return
+	}
+	defer lanServer.Close()
+
 	// 启动服务端监听
 	go func() {
-		server, err := net.Listen("tcp", it.serverAddress)
-		if err != nil {
-			it.log.Error(err, "listen server port error")
-			os.Exit(1)
-		}
-		defer server.Close()
 		it.log.Info("start server port:", it.serverAddress)
 		for {
-			lanConn, err := server.Accept()
+			lanConn, err := lanServer.Accept()
 			if err != nil {
-				it.log.Error(err, "accept server connection error")
+				it.log.Error(err, "accept lan server connection error")
 				time.Sleep(1000)
 				continue
 			}
 			it.log.Debug("get a lan connection", strconv.Itoa(len(it.lanConns)+1), lanConn.LocalAddr().String(), "<-", lanConn.RemoteAddr().String())
+			it.lanConnsLock.Lock()
 			it.lanConns <- lanConn
+			it.lanConnsLock.Unlock()
 		}
 	}()
 
 	// 启动应用端监听
-	server, err := net.Listen("tcp", it.applicationAddress)
+	appServer, err := net.Listen("tcp", it.applicationAddress)
 	if err != nil {
 		it.log.Error(err, "listen application port error")
-		os.Exit(1)
+		return
 	}
-	defer server.Close()
+	defer appServer.Close()
+
 	it.log.Info("start application port:", it.applicationAddress)
 	for {
-		clientConn, err := server.Accept()
+		clientConn, err := appServer.Accept()
 		if err != nil {
 			it.log.Error(err, "accept application connection error")
 			time.Sleep(1000)
@@ -104,7 +118,9 @@ func (it *ServerInfo) takeLanConn() (net.Conn, error) {
 			continue
 		}
 		// 获得lan端的连接
+		it.lanConnsLock.Lock()
 		lanConn := <-it.lanConns
+		it.lanConnsLock.Unlock()
 		// 发送握手指令
 		handshake := it.handshaker.MakeHandshake()
 		_, err := lanConn.Write(handshake[:])
