@@ -5,22 +5,20 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"tcp-tunnel/config"
 
 	"golang.org/x/exp/slices"
 )
 
 type Handshaker struct {
 	staticKey string
-	userKey   string
+	UserKey   string
 }
 
 const HandshakeDataLength = 64
 
 func MakeHandshaker(key string) *Handshaker {
 	return &Handshaker{
-		staticKey: config.DEFAULT_HANDSHAKE_KEY_SALT,
-		userKey:   key,
+		UserKey: key,
 	}
 }
 
@@ -29,7 +27,7 @@ func (it *Handshaker) MakeHandshake() [HandshakeDataLength]byte {
 	tmp := []byte{}
 	tmp = append(tmp, data...)
 	tmp = append(tmp, []byte(it.staticKey)...)
-	tmp = append(tmp, []byte(it.userKey)...)
+	tmp = append(tmp, []byte(it.UserKey)...)
 	hash := getSha256(tmp)
 	bytes := [HandshakeDataLength]byte(append(data, hash...))
 	return bytes
@@ -41,7 +39,7 @@ func (it *Handshaker) CheckHandshake(handshakeData [HandshakeDataLength]byte) bo
 	tmp := []byte{}
 	tmp = append(tmp, data...)
 	tmp = append(tmp, []byte(it.staticKey)...)
-	tmp = append(tmp, []byte(it.userKey)...)
+	tmp = append(tmp, []byte(it.UserKey)...)
 	hash2 := getSha256(tmp)
 	return slices.Equal(hash, hash2)
 }

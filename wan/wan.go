@@ -3,7 +3,6 @@ package wan
 import (
 	"fmt"
 	"os"
-	"tcp-tunnel/config"
 	"tcp-tunnel/logger"
 
 	"github.com/yymmiinngg/goargs"
@@ -21,17 +20,18 @@ func Start(argsArr []string, log *logger.Logger) {
 	template := `
     Usage: {{COMMAND}} WAN {{OPTION}}
 
-	* -s, --server-port       # Listen a port for forwarding traffic from LAN to an 
-	#                           open application port (Format ip:port)
+	* -b, --bind-address      # Listen on a port for client connecting and binding, 
+	#                           Like "0.0.0.0:3390" (Default: ":3390")
 	+ -i, --io-timeout        # Read/Write Timeout Duration (Unit: Seconds, Default: 120)
-	+ -k, --handshake-key     # Handshake Key, Preventing Unauthorized Use of WAN Port
+	+ -k, --handshake-key     # Handshake key used for binding connections to protect the
+	#                           server from unauthorized connection hijacking
 
     ? -h, --help              # Show Help and Exit
     ? -v, --version           # Show Version and Exit
 `
 
 	// 定义变量
-	var serverAddress string
+	var bindAddress string
 	var handshakeKey string
 	var ioTimeout int
 
@@ -43,9 +43,9 @@ func Start(argsArr []string, log *logger.Logger) {
 	}
 
 	// 绑定变量
-	args.StringOption("-s", &serverAddress, "")
+	args.StringOption("-b", &bindAddress, ":3390")
 	args.IntOption("-i", &ioTimeout, 120)
-	args.StringOption("-k", &handshakeKey, config.DEFAULT_HANDSHAKE_KEY)
+	args.StringOption("-k", &handshakeKey, "")
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
@@ -73,11 +73,11 @@ func Start(argsArr []string, log *logger.Logger) {
 		os.Exit(1)
 	}
 
-	server := MakeServer(
-		serverAddress,
+	// 启动服务
+	StartBindServer(
+		bindAddress,
 		ioTimeout,
 		handshakeKey,
 		log,
 	)
-	server.StartServer()
 }

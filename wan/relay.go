@@ -23,23 +23,9 @@ type RelayServer struct {
 	lanConns           chan net.Conn
 	lanConnsLock       sync.Locker
 	log                *logger.Logger
-
 	// 两个重要的监听器
 	relayListener       net.Listener
 	applicationListener net.Listener
-}
-
-func MakeRelayServer(relayBindHost, applicationAddress string, ioTimeout int, log *logger.Logger) (*RelayServer, string) {
-	handshakerKey := uuid.New().String()
-	return &RelayServer{
-		relayBindHost:      relayBindHost,
-		applicationAddress: applicationAddress,
-		handshaker:         core.MakeHandshaker(handshakerKey),
-		ioTimeout:          ioTimeout,
-		lanConnsLock:       &sync.Mutex{},
-		lanConns:           make(chan net.Conn, 10),
-		log:                log,
-	}, handshakerKey
 }
 
 func (it *RelayServer) Close() {
@@ -60,20 +46,38 @@ func (it *RelayServer) Close() {
 }
 
 // 局域网的连接
-func (it *RelayServer) StartServer() string {
+func StartRelayServer(
+	relayBindHost,
+	applicationAddress string,
+	ioTimeout int,
+	log *logger.Logger,
+) *RelayServer {
+
+	// 随机一个密钥
+	handshakerKey := uuid.New().String()
+	it := &RelayServer{
+		relayBindHost:      relayBindHost,
+		applicationAddress: applicationAddress,
+		handshaker:         core.MakeHandshaker(handshakerKey),
+		ioTimeout:          ioTimeout,
+		lanConnsLock:       &sync.Mutex{},
+		lanConns:           make(chan net.Conn, 10),
+		log:                log,
+	}
 
 	// 转发端口监听
 	relayListener, err := net.Listen("tcp", it.relayBindHost+":0")
 	if err != nil {
 		it.log.Error(err, "listen relay port error")
-		return ""
+		return nil
 	}
 
 	// 应用端口监听
 	applicationListener, err := net.Listen("tcp", it.applicationAddress)
 	if err != nil {
 		it.log.Error(err, "listen application port error")
-		return ""
+		relayListener.Close() // 关闭转发监听
+		return nil
 	}
 
 	// 保存
@@ -91,7 +95,7 @@ func (it *RelayServer) StartServer() string {
 			}
 			it.log.Debug("get a relay connection", strconv.Itoa(len(it.lanConns)+1), lanConn.LocalAddr().String(), "<-", lanConn.RemoteAddr().String())
 			it.lanConnsLock.Lock()
-			it.lanConns <- lanConn
+			it.lanConns <- lanConn // 连接放入待命队列
 			it.lanConnsLock.Unlock()
 		}
 	}()
@@ -111,8 +115,7 @@ func (it *RelayServer) StartServer() string {
 		}
 	}()
 
-	// 返回转发监听的地址
-	return relayListener.Addr().String()
+	return it
 }
 
 // 处理客户端的应用请求

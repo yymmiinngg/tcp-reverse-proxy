@@ -3,7 +3,6 @@ package lan
 import (
 	"fmt"
 	"os"
-	"tcp-tunnel/config"
 	"tcp-tunnel/logger"
 
 	"github.com/yymmiinngg/goargs"
@@ -34,6 +33,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
+		return
 	}
 
 	// 定义变量
@@ -51,7 +51,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	args.IntOption("-r", &maxReadyConnection, 5)
 	args.IntOption("-c", &connectTimeout, 10)
 	args.IntOption("-i", &ioTimeout, 120)
-	args.StringOption("-k", &handshakeKey, config.DEFAULT_HANDSHAKE_KEY)
+	args.StringOption("-k", &handshakeKey, "")
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
@@ -72,30 +72,34 @@ func Start(argsArr []string, log *logger.Logger) {
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
+		return
 	}
 
 	if maxReadyConnection < 1 {
 		fmt.Println("The minimum ready connection count is 1")
 		os.Exit(1)
+		return
 	}
 
 	if maxReadyConnection > 1024 {
 		fmt.Println("The maximum ready connection count is 1024")
 		os.Exit(1)
+		return
 	}
 
 	if connectTimeout == 0 {
 		fmt.Println("The connection timeout duration cannot be less than 1")
 		os.Exit(1)
+		return
 	}
 
 	if ioTimeout == 0 {
 		fmt.Println("The io timeout duration cannot be less than 1")
 		os.Exit(1)
+		return
 	}
 
-	client := MakeClient(
-		serverAddress,
+	StartClient(serverAddress,
 		openAddress,
 		applicationAddress,
 		handshakeKey,
@@ -104,5 +108,4 @@ func Start(argsArr []string, log *logger.Logger) {
 		ioTimeout,
 		log,
 	)
-	client.StartClient()
 }

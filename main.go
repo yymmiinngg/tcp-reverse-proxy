@@ -31,8 +31,6 @@ var GoVersion string = "unknow"
 
 func main() {
 
-	// 这里可以替换成 `os.Args` 以处理控制台命令行
-	// flag.Parse()
 	var argsArr = os.Args
 	// 模板
 	template := `
@@ -42,18 +40,18 @@ func main() {
 	
 	#   LAN     Run a LAN client to forward traffic from WAN to the application port
 	#   WAN     Run a WAN server to forward traffic from user clients to LAN client
-	#   SCRIPT  Load a script file to run multiple LAN or WAN-side programs.
+	#   SCRIPT  Load a script file to run multiple LAN or WAN side programs.
 
 	# SCRIPT-FILE:
 	
 	#   Script file content like (Multiple line)：
 
-	#   WAN -a 0.0.0.0:8081 -s 0.0.0.0:9981
-	#   WAN -a 0.0.0.0:8082 -s 0.0.0.0:9982
-	#   LAN -a 127.0.0.1:8081 -s 127.0.0.1:9981
-	#   LAN -a 127.0.0.1:8082 -s 127.0.0.1:9982
+	#   WAN -s :9981
+	#   WAN -s :9982
+	#   LAN -a 10.0.0.1:8081 -s 100.100.100.1:9981 -o :8081 
+	#   LAN -a 10.0.0.1:8082 -s 100.100.100.1:9982 -o :8082
 
-	+ -l, --logger   # Output log to where:
+	+ -l, --logger   # Output log to:
 	#                    - console: Out to console (Default)
 	#                    - User specified file, like: /var/log/tcprp-out.log
 	? -d, --debug    # Output debug message, There are a lot of logs in debug mode
@@ -100,7 +98,7 @@ func main() {
 	}
 
 	// 显示帮助
-	if args.Has("-h", false) && (mode_ == "" || !strings.Contains(" LAN | WAN | SCRIPT", strings.ToUpper(mode_))) {
+	if args.Has("-h", false) && (mode_ == "" || !strings.Contains(" LAN | WAN | SCRIPT ", strings.ToUpper(mode_))) {
 		fmt.Println(args.Usage())
 		return
 	}
@@ -112,6 +110,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 开始函数
 	var start = func(mode string, argsarr []string) {
 		if strings.ToLower(mode) == "lan" {
 			lan.Start(argsarr, log)
@@ -126,7 +125,8 @@ func main() {
 		}
 	}
 
-	if strings.ToLower(mode_) == "script" {
+	// 运行指令
+	if strings.ToLower(mode_) == "script" { // 运行 Script
 		if script_ == "" {
 			fmt.Println("In SCRIPT mode, the parameter SCRIPT-FILE is mandatory.")
 			os.Exit(1)
@@ -144,11 +144,12 @@ func main() {
 			go start(cmds[0], cmds)
 		}
 		time.Sleep(1000 * time.Hour)
-	} else {
+	} else { // 运行 Wan||Lan
 		start(mode_, os.Args)
 	}
 }
 
+// 读脚本文件
 func readLines(path string) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
