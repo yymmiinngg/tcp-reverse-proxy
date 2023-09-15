@@ -17,6 +17,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	+ -a, --application-address  # Mapped TCP Address for the Application, (Format: ip:port,
 	#                              Default: 127.0.0.1:80)
 	* -s, --server-address       # Associated Server TCP Address (Format: ip:port)
+	* -o, --open-address         # Associated Server TCP Address (Format: ip:port)
 	+ -r, --max-ready-connection # Maximum Ready Connection Count (Default: 5), Ready
 	#                              connections help improve client connection speed. The
 	#                              quantity limit is 1024.
@@ -38,6 +39,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	// 定义变量
 	var applicationAddress string
 	var serverAddress string
+	var openAddress string
 	var handshakeKey string
 
 	var maxReadyConnection, connectTimeout, ioTimeout int
@@ -45,6 +47,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	// 绑定变量
 	args.StringOption("-a", &applicationAddress, "127.0.0.1:80")
 	args.StringOption("-s", &serverAddress, "")
+	args.StringOption("-o", &openAddress, "")
 	args.IntOption("-r", &maxReadyConnection, 5)
 	args.IntOption("-c", &connectTimeout, 10)
 	args.IntOption("-i", &ioTimeout, 120)
@@ -56,13 +59,13 @@ func Start(argsArr []string, log *logger.Logger) {
 	// 显示帮助
 	if args.HasItem("-h", "--help") {
 		fmt.Println(args.Usage())
-		os.Exit(1)
+		return
 	}
 
 	// 显示版本
 	if args.HasItem("-v", "--version") {
 		fmt.Println("v0.0.1")
-		os.Exit(1)
+		return
 	}
 
 	// 错误输出
@@ -91,9 +94,9 @@ func Start(argsArr []string, log *logger.Logger) {
 		os.Exit(1)
 	}
 
-	// 局域网的连接
-	serverConnection := MakeServerConnectionPoolInfo(
+	client := MakeClient(
 		serverAddress,
+		openAddress,
 		applicationAddress,
 		handshakeKey,
 		maxReadyConnection,
@@ -101,7 +104,5 @@ func Start(argsArr []string, log *logger.Logger) {
 		ioTimeout,
 		log,
 	)
-	for {
-		serverConnection.GetServerConnect()
-	}
+	client.StartClient()
 }

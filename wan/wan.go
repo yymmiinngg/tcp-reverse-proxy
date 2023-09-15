@@ -9,13 +9,18 @@ import (
 	"github.com/yymmiinngg/goargs"
 )
 
+/*
+
+	+ -a, --application-port  # Listen an open port for an application (Format ip:port,
+	#                           Default: 127.0.0.1:80)
+
+*/
+
 func Start(argsArr []string, log *logger.Logger) {
 
 	template := `
     Usage: {{COMMAND}} WAN {{OPTION}}
 
-	+ -a, --application-port  # Listen an open port for an application (Format ip:port,
-	#                           Default: 127.0.0.1:80)
 	* -s, --server-port       # Listen a port for forwarding traffic from LAN to an 
 	#                           open application port (Format ip:port)
 	+ -i, --io-timeout        # Read/Write Timeout Duration (Unit: Seconds, Default: 120)
@@ -26,7 +31,6 @@ func Start(argsArr []string, log *logger.Logger) {
 `
 
 	// 定义变量
-	var applicationAddress string
 	var serverAddress string
 	var handshakeKey string
 	var ioTimeout int
@@ -39,7 +43,6 @@ func Start(argsArr []string, log *logger.Logger) {
 	}
 
 	// 绑定变量
-	args.StringOption("-a", &applicationAddress, "127.0.0.1:80")
 	args.StringOption("-s", &serverAddress, "")
 	args.IntOption("-i", &ioTimeout, 120)
 	args.StringOption("-k", &handshakeKey, config.DEFAULT_HANDSHAKE_KEY)
@@ -50,13 +53,13 @@ func Start(argsArr []string, log *logger.Logger) {
 	// 显示帮助
 	if args.HasItem("-h", "--help") {
 		fmt.Println(args.Usage())
-		os.Exit(1)
+		return
 	}
 
 	// 显示版本
 	if args.HasItem("-v", "--version") {
 		fmt.Println("v0.0.1")
-		os.Exit(1)
+		return
 	}
 
 	// 错误输出
@@ -70,6 +73,11 @@ func Start(argsArr []string, log *logger.Logger) {
 		os.Exit(1)
 	}
 
-	serverInfo := MakeServerInfo(serverAddress, applicationAddress, handshakeKey, ioTimeout, log)
-	serverInfo.StartServer()
+	server := MakeServer(
+		serverAddress,
+		ioTimeout,
+		handshakeKey,
+		log,
+	)
+	server.StartServer()
 }

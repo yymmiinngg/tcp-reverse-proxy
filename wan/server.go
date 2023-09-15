@@ -1,22 +1,18 @@
 package wan
 
 import (
-	"bufio"
-	"fmt"
 	"net"
 	"os"
-	"strings"
+	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
 	"time"
-
-	"github.com/yymmiinngg/goargs"
 )
 
 type Server struct {
-	serverPort   string
-	ioTimeout    int
-	handshakeKey string
-	log          *logger.Logger
+	serverAddress string
+	ioTimeout     int
+	handshakeKey  string
+	log           *logger.Logger
 }
 
 func MakeServer(
@@ -26,93 +22,87 @@ func MakeServer(
 	log *logger.Logger,
 ) *Server {
 	return &Server{
-		serverPort:   serverPort,
-		ioTimeout:    ioTimeout,
-		handshakeKey: handshakeKey,
-		log:          log,
+		serverAddress: serverPort,
+		ioTimeout:     ioTimeout,
+		handshakeKey:  handshakeKey,
+		log:           log,
 	}
 }
 
 func (it *Server) StartServer() {
-
-	server, err := net.Listen("tcp", it.serverPort)
+	// 监听服务端口
+	server, err := net.Listen("tcp", it.serverAddress)
 	if err != nil {
 		it.log.Error(err, "listen server port error")
 		os.Exit(1)
 	}
 	defer server.Close()
-	it.log.Info("start server port:", it.serverPort)
+	it.log.Info("listen server port:", it.serverAddress)
+
+	// 处理请求
 	for {
-		holdConn, err := server.Accept()
+		bindConn, err := server.Accept()
 		if err != nil {
-			it.log.Error(err, "accept server connection error")
+			it.log.Error(err, "accept bind connection error")
 			time.Sleep(1000)
 			continue
 		}
-		it.log.Debug("get a lan connection", holdConn.LocalAddr().String(), "<-", holdConn.RemoteAddr().String())
-		it.HandlConn(holdConn)
+		it.log.Debug("get a bind connection", bindConn.LocalAddr().String(), "<-", bindConn.RemoteAddr().String())
+		it.HandlBindConn(bindConn)
 	}
 }
 
-func (it *Server) HandlConn(holeConn net.Conn) {
-	defer holeConn.Close()
+// 处理请求
+func (it *Server) HandlBindConn(bindConn net.Conn) {
+	defer bindConn.Close()
 
-	// 读取的第一行是转发参数
-	br := bufio.NewReader(holeConn)
-	line, err := br.ReadString('\n')
-	if err != nil {
-		fmt.Println(err)
+	// 读取bind命令
+	bindRequest := &core.BindRequest{}
+	if err := core.ReadAny(bindConn, &bindRequest); err != nil {
+		it.log.Error(err, "read bind request error")
 		return
 	}
 
-	argsArr := strings.Split(line, " ")
-
-	template := `
-		* -a 
-		* -s 
-	`
-
-	// 定义变量
-	var applicationAddress string
-	var serverAddress string
-
-	// 编译模板
-	args, err := goargs.Compile(template)
+	// 提取tcp地址
+	tcpAddr, err := net.ResolveTCPAddr("tcp", bindConn.LocalAddr().String())
 	if err != nil {
-		fmt.Println(err.Error())
+		it.log.Error(err, "get local addr error")
 		return
 	}
 
-	// 绑定变量
-	args.StringOption("-a", &applicationAddress, "127.0.0.1:80")
-	args.StringOption("-s", &serverAddress, "")
-
-	// 处理参数
-	err = args.Parse(argsArr)
-
-	// 错误输出
-	if err != nil {
-		fmt.Println(err.Error())
+	// 启动转发服务
+	relayServer, handshakeKey := MakeRelayServer(tcpAddr.IP.String(), bindRequest.OpenAddress, it.ioTimeout, it.log)
+	relayAddress := relayServer.StartServer()
+	if relayAddress == "" {
 		return
 	}
+	defer relayServer.Close()
 
-	serverInfo := MakeServerInfo(serverAddress, applicationAddress, it.handshakeKey, it.ioTimeout, it.log)
-	go serverInfo.StartServer()
-	defer serverInfo.Close()
+	// 响应绑定连接
+	err = core.WriteAny(bindConn, &core.BindResponse{
+		Response:     core.Response{Message: "success"},
+		ClientName:   bindRequest.ClientName,
+		RelayAddress: relayAddress,
+		HandshakeKey: handshakeKey,
+	})
+	if err != nil {
+		it.log.Error(err, "response bind connection error")
+		return
+	}
 
 	// 长连接，断开则关闭整个转发链路
 	buff := make([]byte, 32)
 	for {
 
-		size, err := holeConn.Read(buff)
+		size, err := bindConn.Read(buff)
 		if err != nil {
-			fmt.Println(err)
+			it.log.Error(err, "read hold connect error")
 			break
 		}
 
-		_, err = holeConn.Write(buff[:size])
+		_, err = bindConn.Write(buff[:size])
 		if err != nil {
-			fmt.Println(err)
+			it.log.Error(err, "write hold connect error")
 			break
 		}
 

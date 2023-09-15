@@ -11,89 +11,112 @@ import (
 	nets "tcp-tunnel/net"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/exp/slices"
 )
 
-type ServerInfo struct {
-	serverAddress      string
+type RelayServer struct {
+	relayBindHost      string
 	applicationAddress string
 	handshaker         *core.Handshaker
 	ioTimeout          int
 	lanConns           chan net.Conn
 	lanConnsLock       sync.Locker
 	log                *logger.Logger
+
+	// 两个重要的监听器
+	relayListener       net.Listener
+	applicationListener net.Listener
 }
 
-func MakeServerInfo(serverAddress, applicationAddress, handshakerKey string, ioTimeout int, log *logger.Logger) *ServerInfo {
-	return &ServerInfo{
-		serverAddress:      serverAddress,
+func MakeRelayServer(relayBindHost, applicationAddress string, ioTimeout int, log *logger.Logger) (*RelayServer, string) {
+	handshakerKey := uuid.New().String()
+	return &RelayServer{
+		relayBindHost:      relayBindHost,
 		applicationAddress: applicationAddress,
 		handshaker:         core.MakeHandshaker(handshakerKey),
 		ioTimeout:          ioTimeout,
+		lanConnsLock:       &sync.Mutex{},
 		lanConns:           make(chan net.Conn, 10),
 		log:                log,
-	}
+	}, handshakerKey
 }
 
-func (it *ServerInfo) Close() {
+func (it *RelayServer) Close() {
 	it.lanConnsLock.Lock()
 	defer it.lanConnsLock.Unlock()
+
+	// 关闭监听器
+	it.relayListener.Close()
+	it.applicationListener.Close()
+
+	// 关闭所有待命连接
 	for len(it.lanConns) > 0 {
 		lanConn := <-it.lanConns
 		lanConn.Close()
 	}
+
+	// TODO 关闭正在转发的连接
 }
 
 // 局域网的连接
-func (it *ServerInfo) StartServer() {
+func (it *RelayServer) StartServer() string {
 
-	lanServer, err := net.Listen("tcp", it.serverAddress)
+	// 转发端口监听
+	relayListener, err := net.Listen("tcp", it.relayBindHost+":0")
 	if err != nil {
-		it.log.Error(err, "listen lan server port error")
-		return
+		it.log.Error(err, "listen relay port error")
+		return ""
 	}
-	defer lanServer.Close()
 
-	// 启动服务端监听
+	// 应用端口监听
+	applicationListener, err := net.Listen("tcp", it.applicationAddress)
+	if err != nil {
+		it.log.Error(err, "listen application port error")
+		return ""
+	}
+
+	// 保存
+	it.relayListener = relayListener
+	it.applicationListener = applicationListener
+
+	// 处理转发连接
 	go func() {
-		it.log.Info("start server port:", it.serverAddress)
+		it.log.Info("start relay port:", relayListener.Addr().String())
 		for {
-			lanConn, err := lanServer.Accept()
+			lanConn, err := relayListener.Accept()
 			if err != nil {
-				it.log.Error(err, "accept lan server connection error")
-				time.Sleep(1000)
-				continue
+				it.log.Debug("accept relay connection error: " + err.Error())
+				break
 			}
-			it.log.Debug("get a lan connection", strconv.Itoa(len(it.lanConns)+1), lanConn.LocalAddr().String(), "<-", lanConn.RemoteAddr().String())
+			it.log.Debug("get a relay connection", strconv.Itoa(len(it.lanConns)+1), lanConn.LocalAddr().String(), "<-", lanConn.RemoteAddr().String())
 			it.lanConnsLock.Lock()
 			it.lanConns <- lanConn
 			it.lanConnsLock.Unlock()
 		}
 	}()
 
-	// 启动应用端监听
-	appServer, err := net.Listen("tcp", it.applicationAddress)
-	if err != nil {
-		it.log.Error(err, "listen application port error")
-		return
-	}
-	defer appServer.Close()
-
-	it.log.Info("start application port:", it.applicationAddress)
-	for {
-		clientConn, err := appServer.Accept()
-		if err != nil {
-			it.log.Error(err, "accept application connection error")
-			time.Sleep(1000)
-			continue
+	// 处理应用连接
+	go func() {
+		it.log.Info("start application port:", it.applicationAddress)
+		for {
+			clientConn, err := applicationListener.Accept()
+			if err != nil {
+				it.log.Debug("accept client connection error: " + err.Error())
+				break
+			}
+			it.log.Debug("get a client connection", clientConn.LocalAddr().String(), "<-", clientConn.RemoteAddr().String())
+			// 处理客户端连接
+			it.handlClientConn(clientConn)
 		}
-		it.log.Debug("get a application connection", clientConn.LocalAddr().String(), "<-", clientConn.RemoteAddr().String())
-		// 处理客户端连接
-		it.handlConn(clientConn)
-	}
+	}()
+
+	// 返回转发监听的地址
+	return relayListener.Addr().String()
 }
 
-func (it *ServerInfo) handlConn(clientConn net.Conn) {
+// 处理客户端的应用请求
+func (it *RelayServer) handlClientConn(clientConn net.Conn) {
 	lanConn, err := it.takeLanConn()
 	if err != nil {
 		it.log.Debug("waiting for connection error: " + err.Error())
@@ -104,7 +127,7 @@ func (it *ServerInfo) handlConn(clientConn net.Conn) {
 	go it.relay(clientConn, lanConn)
 }
 
-func (it *ServerInfo) takeLanConn() (net.Conn, error) {
+func (it *RelayServer) takeLanConn() (net.Conn, error) {
 	startTime := time.Now()
 	// 获得现有或等待连接
 	for {
@@ -147,7 +170,7 @@ func (it *ServerInfo) takeLanConn() (net.Conn, error) {
 	}
 }
 
-func (it *ServerInfo) relay(clientConn, lanConn net.Conn) {
+func (it *RelayServer) relay(clientConn, lanConn net.Conn) {
 	defer func() {
 		clientConn.Close()
 		lanConn.Close()

@@ -17,7 +17,7 @@ type ServerConnectionPoolInfo struct {
 	maxReadyConnect    int
 	readyLock          sync.Locker
 	readyConnect       int // 准备的连接
-	serverAddress      string
+	relayAddress       string
 	applicationAddress string
 	handshaker         *core.Handshaker
 	log                *logger.Logger
@@ -30,7 +30,7 @@ func MakeServerConnectionPoolInfo(serverAddress, applicationAddress, handshakerK
 		maxReadyConnect:    maxReadyConnect,
 		readyLock:          &sync.Mutex{},
 		readyConnect:       0,
-		serverAddress:      serverAddress,
+		relayAddress:       serverAddress,
 		applicationAddress: applicationAddress,
 		handshaker:         core.MakeHandshaker(handshakerKey),
 		log:                log,
@@ -60,8 +60,8 @@ func (it *ServerConnectionPoolInfo) GetServerConnect() {
 		}
 		// 连接服务端
 		var err error
-		lanConn, err = net.DialTimeout("tcp", it.serverAddress, time.Duration(it.connectTimeout)*time.Second)
-		if err != nil {
+		lanConn, err = net.DialTimeout("tcp", it.relayAddress, time.Duration(it.connectTimeout)*time.Second)
+		if err != nil { // 连接失败
 			errCount++
 			it.log.Error(err, "connect to server error", fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
 			if errCount <= 3 {
@@ -71,8 +71,10 @@ func (it *ServerConnectionPoolInfo) GetServerConnect() {
 			} else {
 				time.Sleep(5000 * time.Millisecond)
 			}
+			// 去重试
 			continue
 		}
+		// 连接成功
 		it.log.Debug("connect to server", lanConn.LocalAddr().String(), "->", lanConn.RemoteAddr().String(), fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
 		break
 	}
