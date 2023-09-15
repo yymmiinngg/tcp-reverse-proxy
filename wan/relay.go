@@ -29,6 +29,7 @@ type RelayServer struct {
 }
 
 func (it *RelayServer) Close() {
+
 	it.lanConnsLock.Lock()
 	defer it.lanConnsLock.Unlock()
 
@@ -40,6 +41,7 @@ func (it *RelayServer) Close() {
 	for len(it.lanConns) > 0 {
 		lanConn := <-it.lanConns
 		lanConn.Close()
+		it.log.Debug("close ready relay connection", lanConn.LocalAddr().String(), "<-", lanConn.RemoteAddr().String())
 	}
 
 	// TODO 关闭正在转发的连接
@@ -134,19 +136,23 @@ func (it *RelayServer) takeLanConn() (net.Conn, error) {
 	startTime := time.Now()
 	// 获得现有或等待连接
 	for {
+
+		// 无连接则等待
 		aliveCount := len(it.lanConns)
 		if aliveCount == 0 {
 			// 等待连接超时
 			if time.Since(startTime) >= time.Duration(it.ioTimeout) {
-				return nil, fmt.Errorf("timeout")
+				return nil, fmt.Errorf("wait relay connection timeout")
 			}
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
+
 		// 获得lan端的连接
 		it.lanConnsLock.Lock()
 		lanConn := <-it.lanConns
 		it.lanConnsLock.Unlock()
+
 		// 发送握手指令
 		handshake := it.handshaker.MakeHandshake()
 		_, err := lanConn.Write(handshake[:])
@@ -169,6 +175,8 @@ func (it *RelayServer) takeLanConn() (net.Conn, error) {
 			lanConn.Close()
 			return nil, fmt.Errorf("handshaker fail")
 		}
+
+		// 返回可用连接
 		return lanConn, nil
 	}
 }

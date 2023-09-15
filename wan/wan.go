@@ -20,7 +20,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	template := `
     Usage: {{COMMAND}} WAN {{OPTION}}
 
-	* -b, --bind-address      # Listen on a port for client connecting and binding, 
+	+ -b, --bind-address      # Listen on a port for client connecting and binding, 
 	#                           Like "0.0.0.0:3390" (Default: ":3390")
 	+ -i, --io-timeout        # Read/Write Timeout Duration (Unit: Seconds, Default: 120)
 	+ -k, --handshake-key     # Handshake key used for binding connections to protect the

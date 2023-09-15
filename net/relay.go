@@ -6,13 +6,12 @@ import (
 )
 
 func Relay(conn1, conn2 net.Conn, ioTimeout int) {
-	defer conn1.Close()
-	defer conn2.Close()
-
+	// 超时起始时间
 	var lastIoTime time.Time = time.Now()
-
 	// 下行
 	go func() {
+		defer conn1.Close()
+		defer conn2.Close()
 		buff := make([]byte, 1024)
 		for {
 			conn1.SetReadDeadline(time.Now().Add(time.Duration(ioTimeout) * time.Second))
@@ -30,6 +29,8 @@ func Relay(conn1, conn2 net.Conn, ioTimeout int) {
 
 	// 上行
 	func() {
+		defer conn1.Close()
+		defer conn2.Close()
 		buff := make([]byte, 1024)
 		for {
 			conn2.SetReadDeadline(time.Now().Add(time.Duration(ioTimeout) * time.Second))
