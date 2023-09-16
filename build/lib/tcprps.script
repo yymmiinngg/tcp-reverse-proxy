@@ -1,12 +1,5 @@
-# This program is used to reverse map LAN ports to the public network, and the
-# connection link is as follows:
-# -------------------------------------------+-------------------------------------
-# lan                                        | wan
-# -------------------------------------------+-------------------------------------
-# application-address <--> server-address <- | -> server-port <--> application-port
-# -------------------------------------------+-------------------------------------
+# This program is used to reverse map LAN ports to the public network
 
-WAN -a 0.0.0.0:8081 -s 0.0.0.0:9981
-WAN -a 0.0.0.0:8082 -s 0.0.0.0:9982
-LAN -a 192.168.10.3:80 -s 127.0.0.1:9981
-LAN -a 192.168.10.3:80 -s 127.0.0.1:9982
+# Example, Forward all TCP requests on port 80 on this machine to port 8080
+WAN -b :3390
+LAN -a 127.0.0.1:28080 -s 127.0.0.1:3390 -o :18080

@@ -77,7 +77,6 @@ func main() {
 	args.StringOperan("SCRIPT-FILE", &script_, "")
 	args.StringOption("-l", &logger_, "console")
 	args.BoolOption("-d", &debug, false)
-	// debug = args.Has("-d", false)
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
@@ -94,7 +93,7 @@ func main() {
 	// 错误输出
 	if err != nil {
 		fmt.Println(err.Error())
-		os.Exit(1)
+		return
 	}
 
 	// 显示帮助
@@ -107,7 +106,7 @@ func main() {
 	log, err := logger.MakeLogger(mode_, logger_, debug)
 	if err != nil {
 		fmt.Println(err.Error())
-		os.Exit(1)
+		return
 	}
 
 	// 开始函数
@@ -119,9 +118,11 @@ func main() {
 		} else if strings.ToLower(mode) == "script" {
 			fmt.Printf("Can't run script mode in script file\n")
 			os.Exit(1)
+			return
 		} else {
 			fmt.Printf("Unknow mode %s\n", mode)
 			os.Exit(1)
+			return
 		}
 	}
 
@@ -130,11 +131,13 @@ func main() {
 		if script_ == "" {
 			fmt.Println("In SCRIPT mode, the parameter SCRIPT-FILE is mandatory.")
 			os.Exit(1)
+			return
 		}
 		cmdLines, err := readLines(script_)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
+			return
 		}
 		for _, cmdLine := range cmdLines {
 			if strings.TrimSpace(cmdLine) == "" {
@@ -143,10 +146,12 @@ func main() {
 			cmds := strings.Split(cmdLine, " ")
 			go start(cmds[0], cmds)
 		}
-		time.Sleep(1000 * time.Hour)
-	} else { // 运行 Wan||Lan
+		// 100年不退出
+		time.Sleep(365.25 * 24 * 100 * time.Hour)
+	} else { // 运行 Wan | Lan
 		start(mode_, os.Args)
 	}
+
 }
 
 // 读脚本文件

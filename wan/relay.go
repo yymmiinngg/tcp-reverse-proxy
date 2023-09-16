@@ -2,7 +2,6 @@ package wan
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 	"sync"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/exp/slices"
 )
 
 type RelayServer struct {
@@ -122,9 +120,9 @@ func StartRelayServer(
 
 // 处理客户端的应用请求
 func (it *RelayServer) handlClientConn(clientConn net.Conn) {
-	lanConn, err := it.takeLanConn()
+	lanConn, err := it.takeRelayConn()
 	if err != nil {
-		it.log.Debug("waiting for connection error: " + err.Error())
+		it.log.Debug("take a relay connection error: " + err.Error())
 		clientConn.Close()
 		return
 	}
@@ -132,7 +130,7 @@ func (it *RelayServer) handlClientConn(clientConn net.Conn) {
 	go it.relay(clientConn, lanConn)
 }
 
-func (it *RelayServer) takeLanConn() (net.Conn, error) {
+func (it *RelayServer) takeRelayConn() (net.Conn, error) {
 	startTime := time.Now()
 	// 获得现有或等待连接
 	for {
@@ -153,28 +151,37 @@ func (it *RelayServer) takeLanConn() (net.Conn, error) {
 		lanConn := <-it.lanConns
 		it.lanConnsLock.Unlock()
 
-		// 发送握手指令
-		handshake := it.handshaker.MakeHandshake()
-		_, err := lanConn.Write(handshake[:])
+		// 通信前握手
+		err := it.handshaker.WrHandshake(lanConn, it.ioTimeout)
 		if err != nil {
 			lanConn.Close()
-			it.log.Debug("write handshaker data error: " + err.Error())
+			it.log.Debug("handshaker error:", err.Error())
 			continue
 		}
-		// 读握手响应
-		buff := make([]byte, len(handshake))
-		lanConn.SetReadDeadline(time.Now().Add(time.Duration(it.ioTimeout) * time.Second))
-		_, err = io.ReadFull(lanConn, buff)
-		if err != nil {
-			lanConn.Close()
-			it.log.Debug("read handshaker data error: " + err.Error())
-			continue
-		}
-		// 错误的响应
-		if !slices.Equal(buff, handshake[:]) {
-			lanConn.Close()
-			return nil, fmt.Errorf("handshaker fail")
-		}
+
+		// // 发送握手指令
+		// handshake := it.handshaker.MakeHandshake()
+		// _, err := lanConn.Write(handshake[:])
+		// if err != nil {
+		// 	lanConn.Close()
+		// 	it.log.Debug("write handshaker data error" + err.Error())
+		// 	continue
+		// }
+		// // 读握手响应
+		// buff := make([]byte, len(handshake))
+		// lanConn.SetReadDeadline(time.Now().Add(time.Duration(it.ioTimeout) * time.Second))
+		// _, err = io.ReadFull(lanConn, buff)
+		// if err != nil {
+		// 	lanConn.Close()
+		// 	it.log.Debug("read handshaker data error" + err.Error())
+		// 	continue
+		// }
+
+		// // 错误的响应
+		// if !slices.Equal(buff, handshake[:]) {
+		// 	lanConn.Close()
+		// 	return nil, fmt.Errorf("handshaker fail")
+		// }
 
 		// 返回可用连接
 		return lanConn, nil

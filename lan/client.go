@@ -2,7 +2,6 @@ package lan
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"sync"
 	"tcp-tunnel/core"
@@ -23,7 +22,8 @@ type Client struct {
 	openAddress        string
 	applicationAddress string
 
-	log *logger.Logger
+	handshaker *core.Handshaker
+	log        *logger.Logger
 
 	// 待命连接计数
 	readyConnect int
@@ -54,6 +54,7 @@ func StartClient(
 		applicationAddress: applicationAddress,
 		log:                log,
 		binded:             false,
+		handshaker:         core.MakeHandshaker(handshakerKey),
 	}
 
 	// 循环重试（直到绑定到服务端）
@@ -80,6 +81,14 @@ func (it *Client) connectAndBind() *core.BindResponse {
 	bindConn, err := net.DialTimeout("tcp", it.serverAddress, time.Duration(it.connectTimeout)*time.Second)
 	if err != nil {
 		it.log.Error(err, "bind connect error")
+		return nil
+	}
+
+	// 绑定连接的握手
+	err = it.handshaker.RwHandshake(bindConn, it.ioTimeout)
+	if err != nil {
+		it.log.Debug("handshake error:", err.Error())
+		bindConn.Close()
 		return nil
 	}
 
@@ -180,10 +189,16 @@ func (it *Client) handleRelayConnection(bundle *relayConnectionBundle) {
 
 	defer bundle.relayConn.Close() // 关闭转发连接
 
-	// 握手
-	err := it.handshake(bundle)
-	if err != nil {
-		it.log.Debug("handshake error:", err.Error())
+	// 是否握手失败
+	if func() bool {
+		defer it.subReady() // 握手成功或失败后减少待命连接数
+		err := bundle.handshaker.RwHandshake(bundle.relayConn, 0)
+		if err != nil {
+			it.log.Debug("handshake error:", err.Error())
+			return true
+		}
+		return false
+	}() {
 		return
 	}
 
@@ -192,24 +207,26 @@ func (it *Client) handleRelayConnection(bundle *relayConnectionBundle) {
 }
 
 // 处理连接
-func (it *Client) handshake(bundle *relayConnectionBundle) error {
+// func (it *Client) handshake(bundle *relayConnectionBundle) error {
 
-	defer it.subReady() // 握手成功或失败后减少待命连接数
+// 	defer it.subReady() // 握手成功或失败后减少待命连接数
 
-	// 处理远程的握手
-	var buff = make([]byte, core.HandshakeDataLength)
-	_, err := io.ReadFull(bundle.relayConn, buff)
-	if err != nil {
-		return err
-	}
-	if !bundle.handshaker.CheckHandshake([64]byte(buff)) {
-		return fmt.Errorf("handshake fail")
-	}
+// 	// 处理远程的握手
+// 	var buff = make([]byte, core.HandshakeDataLength)
+// 	_, err := io.ReadFull(bundle.relayConn, buff)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if !bundle.handshaker.CheckHandshake([64]byte(buff)) {
+// 		return fmt.Errorf("handshake fail")
+// 	}
 
-	// 握手响应
-	_, err = bundle.relayConn.Write(buff)
-	return err
-}
+// 	newBuff := bundle.handshaker.MakeHandshake()
+
+// 	// 握手响应
+// 	_, err = bundle.relayConn.Write(newBuff[:])
+// 	return err
+// }
 
 // 转发 relayAddress <-> applicationAddress
 func (it *Client) startRelay(bundle *relayConnectionBundle) {

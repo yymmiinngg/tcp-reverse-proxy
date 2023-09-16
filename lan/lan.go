@@ -9,14 +9,14 @@ import (
 )
 
 func Start(argsArr []string, log *logger.Logger) {
-
 	template := `
     Usage: {{COMMAND}} LAN {{OPTION}}
 
 	+ -a, --application-address  # Mapped TCP Address for the Application, (Format: ip:port,
 	#                              Default: 127.0.0.1:80)
-	* -s, --server-address       # Associated Server TCP Address (Format: ip:port)
-	* -o, --open-address         # Associated Server TCP Address (Format: ip:port)
+	* -s, --server-address       # Listen on a port for Client binding (Format: ip:port)
+	* -o, --open-address         # Instruct the server to open a port for relay traffic
+	#                              to the client (Format: ip:port)
 	+ -r, --max-ready-connection # Maximum Ready Connection Count (Default: 5), Ready
 	#                              connections help improve client connection speed. The
 	#                              quantity limit is 1024.

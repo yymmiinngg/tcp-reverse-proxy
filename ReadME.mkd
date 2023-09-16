@@ -2,28 +2,28 @@
 
 This is a reverse proxy program based on the TCP protocol, used to map the ports of an intranet application to the public network. If you need to access a website running within a local area network on the Internet, you can use this program to achieve that.
 
-```
--------------------------------------------+-------------------------------------
-lan                                        | wan
--------------------------------------------+-------------------------------------
-application-address <--> server-address <- | -> server-port <--> application-port
--------------------------------------------+-------------------------------------
-```
-
 # For example
 
 At the first, you need to have a Linux or Windows server with a public IP address, Assuming the IP is "9.9.9.9", Run the following code on the server:
 
 ```
-tcprp WAN -a 0.0.0.0:80 -s 0.0.0.0:10080
+tcprp WAN -b :3390
 ```
 
 Next, on your internal application server, Assuming the IP is "192.168.9.9" (or another server that can directly access your application server), run the following code.
 
 ```
-tcprp LAN -a 127.0.0.1:80 -s 9.9.9.9:10080
+tcprp LAN -a 127.0.0.1:80 -s 9.9.9.9:3390 -o :80
 ```
 
 Finally, you can access the website at http://9.9.9.9:80 from anywhere (a computer with internet access) to reach http://192.168.9.9:80.
 
+The process is as follows：
 
+1. The server (WAN) listens on a port (-b :3390) to accept requests from clients (LAN) for forwarding
+
+2. The client connects to server bind port (-s 9.9.9.9:3390) on the server and sends a binding request to the port for binding to open port (-o :80)
+
+3. The client establishes a forwarding connection from the application port (-a 127.0.0.1:80) to the server (-o :80)
+
+4. When the user requests the server open port (-o :80), the request is forwarded to the application port (-a 127.0.0.1:80) port

@@ -10,7 +10,7 @@ import (
 type BindServer struct {
 	serverAddress string
 	ioTimeout     int
-	handshakeKey  string
+	handshake     *core.Handshaker
 	log           *logger.Logger
 }
 
@@ -25,7 +25,7 @@ func StartBindServer(
 	it := &BindServer{
 		serverAddress: serverPort,
 		ioTimeout:     ioTimeout,
-		handshakeKey:  handshakeKey,
+		handshake:     core.MakeHandshaker(handshakeKey),
 		log:           log,
 	}
 
@@ -54,6 +54,13 @@ func StartBindServer(
 // 处理请求
 func (it *BindServer) HandlBindConn(bindConn net.Conn) {
 	defer bindConn.Close()
+
+	// 通信前握手
+	err := it.handshake.WrHandshake(bindConn, it.ioTimeout)
+	if err != nil {
+		it.log.Debug("handshaker error:", err.Error())
+		return
+	}
 
 	// 读取bind命令
 	bindRequest := &core.BindRequest{}

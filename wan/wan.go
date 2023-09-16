@@ -40,6 +40,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
+		return
 	}
 
 	// 绑定变量
@@ -51,13 +52,13 @@ func Start(argsArr []string, log *logger.Logger) {
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示帮助
-	if args.HasItem("-h", "--help") {
+	if args.Has("-h", false) {
 		fmt.Println(args.Usage())
 		return
 	}
 
 	// 显示版本
-	if args.HasItem("-v", "--version") {
+	if args.Has("-v", false) {
 		fmt.Println("v0.0.1")
 		return
 	}
@@ -66,11 +67,13 @@ func Start(argsArr []string, log *logger.Logger) {
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
+		return
 	}
 
 	if ioTimeout == 0 {
 		fmt.Println("The io timeout duration cannot be less than 1")
 		os.Exit(1)
+		return
 	}
 
 	// 启动服务
