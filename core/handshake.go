@@ -46,12 +46,12 @@ func (it *Handshaker) checkHandshake(handshakeData [HandshakeDataLength]byte, da
 }
 
 // 处理连接
-func (it *Handshaker) RwHandshake(conn net.Conn, ioTimeout int) error {
+func (it *Handshaker) RwHandshake(conn net.Conn, readTimeout int) error {
 	// 处理远程的握手
 	var handshakeData = make([]byte, HandshakeDataLength)
-	if ioTimeout > 0 {
+	if readTimeout > 0 {
 		defer conn.SetReadDeadline(time.Time{})
-		conn.SetReadDeadline(time.Now().Add(time.Duration(ioTimeout) * time.Second))
+		conn.SetReadDeadline(time.Now().Add(time.Duration(readTimeout) * time.Second))
 	}
 	_, err := io.ReadFull(conn, handshakeData)
 	if err != nil {
@@ -68,7 +68,7 @@ func (it *Handshaker) RwHandshake(conn net.Conn, ioTimeout int) error {
 	return err
 }
 
-func (handshaker *Handshaker) WrHandshake(conn net.Conn, ioTimeout int) error {
+func (handshaker *Handshaker) WrHandshake(conn net.Conn, readTimeout int) error {
 	// 发送握手指令
 	handshakeData := handshaker.makeHandshake([]byte{})
 	_, err := conn.Write(handshakeData[:])
@@ -77,9 +77,9 @@ func (handshaker *Handshaker) WrHandshake(conn net.Conn, ioTimeout int) error {
 	}
 	// 读握手响应
 	newHandshakeData := make([]byte, HandshakeDataLength)
-	if ioTimeout > 0 {
+	if readTimeout > 0 {
 		defer conn.SetReadDeadline(time.Time{})
-		conn.SetReadDeadline(time.Now().Add(time.Duration(ioTimeout) * time.Second))
+		conn.SetReadDeadline(time.Now().Add(time.Duration(readTimeout) * time.Second))
 	}
 	_, err = io.ReadFull(conn, newHandshakeData)
 	if err != nil {

@@ -15,15 +15,16 @@ type Response struct {
 
 type BindRequest struct {
 	Reqeust
-	ClientName  string `json:"clientName"`
-	OpenAddress string `json:"openAddress"`
+	ClientName string `json:"clientName"`
+	OpenPort   int    `json:"openPort"`
 }
 
 type BindResponse struct {
 	Response
 	ClientName   string `json:"clientName"`
-	RelayAddress string `json:"relayAddress"`
+	RelayPort    int    `json:"relayPort"`
 	HandshakeKey string `json:"handshakeKey"`
+	Heartbeat    int    `json:"heartbeat"`
 }
 
 type UnBindRequest struct {

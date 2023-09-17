@@ -36,7 +36,7 @@ CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
     -X 'main.BuildTime=$appBuildTime' \
     -X 'main.GoVersion=$appGoVersion'"
 
-distName=$appName-$appPlatform-$appVersion
+distName=$appName-$appPlatform #-$appVersion
 
 echo "Clear files..."
 rm -rf $distDir/$distName

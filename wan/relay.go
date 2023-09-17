@@ -14,13 +14,13 @@ import (
 )
 
 type RelayServer struct {
-	relayBindHost      string
-	applicationAddress string
-	handshaker         *core.Handshaker
-	ioTimeout          int
-	lanConns           chan net.Conn
-	lanConnsLock       sync.Locker
-	log                *logger.Logger
+	relayBindHost string
+	openPort      int
+	handshaker    *core.Handshaker
+	ioTimeout     int
+	lanConns      chan net.Conn
+	lanConnsLock  sync.Locker
+	log           *logger.Logger
 	// 两个重要的监听器
 	relayListener       net.Listener
 	applicationListener net.Listener
@@ -47,8 +47,8 @@ func (it *RelayServer) Close() {
 
 // 局域网的连接
 func StartRelayServer(
-	relayBindHost,
-	applicationAddress string,
+	relayBindHost string,
+	openPort int,
 	ioTimeout int,
 	log *logger.Logger,
 ) *RelayServer {
@@ -56,24 +56,24 @@ func StartRelayServer(
 	// 随机一个密钥
 	handshakerKey := uuid.New().String()
 	it := &RelayServer{
-		relayBindHost:      relayBindHost,
-		applicationAddress: applicationAddress,
-		handshaker:         core.MakeHandshaker(handshakerKey),
-		ioTimeout:          ioTimeout,
-		lanConnsLock:       &sync.Mutex{},
-		lanConns:           make(chan net.Conn, 10),
-		log:                log,
+		relayBindHost: relayBindHost,
+		openPort:      openPort,
+		handshaker:    core.MakeHandshaker(handshakerKey),
+		ioTimeout:     ioTimeout,
+		lanConnsLock:  &sync.Mutex{},
+		lanConns:      make(chan net.Conn, 10),
+		log:           log,
 	}
 
 	// 转发端口监听
-	relayListener, err := net.Listen("tcp", it.relayBindHost+":0")
+	relayListener, err := net.Listen("tcp", net.JoinHostPort(it.relayBindHost, "0")) // 任意端口
 	if err != nil {
 		it.log.Error(err, "listen relay port error")
 		return nil
 	}
 
 	// 应用端口监听
-	applicationListener, err := net.Listen("tcp", it.applicationAddress)
+	openListener, err := net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(openPort)))
 	if err != nil {
 		it.log.Error(err, "listen application port error")
 		relayListener.Close() // 关闭转发监听
@@ -82,7 +82,7 @@ func StartRelayServer(
 
 	// 保存
 	it.relayListener = relayListener
-	it.applicationListener = applicationListener
+	it.applicationListener = openListener
 
 	// 处理转发连接
 	go func() {
@@ -102,9 +102,9 @@ func StartRelayServer(
 
 	// 处理应用连接
 	go func() {
-		it.log.Info("start application port:", it.applicationAddress)
+		it.log.Info("start application port:", strconv.Itoa(it.openPort))
 		for {
-			clientConn, err := applicationListener.Accept()
+			clientConn, err := openListener.Accept()
 			if err != nil {
 				it.log.Debug("accept client connection error: " + err.Error())
 				break
@@ -158,30 +158,6 @@ func (it *RelayServer) takeRelayConn() (net.Conn, error) {
 			it.log.Debug("handshaker error:", err.Error())
 			continue
 		}
-
-		// // 发送握手指令
-		// handshake := it.handshaker.MakeHandshake()
-		// _, err := lanConn.Write(handshake[:])
-		// if err != nil {
-		// 	lanConn.Close()
-		// 	it.log.Debug("write handshaker data error" + err.Error())
-		// 	continue
-		// }
-		// // 读握手响应
-		// buff := make([]byte, len(handshake))
-		// lanConn.SetReadDeadline(time.Now().Add(time.Duration(it.ioTimeout) * time.Second))
-		// _, err = io.ReadFull(lanConn, buff)
-		// if err != nil {
-		// 	lanConn.Close()
-		// 	it.log.Debug("read handshaker data error" + err.Error())
-		// 	continue
-		// }
-
-		// // 错误的响应
-		// if !slices.Equal(buff, handshake[:]) {
-		// 	lanConn.Close()
-		// 	return nil, fmt.Errorf("handshaker fail")
-		// }
 
 		// 返回可用连接
 		return lanConn, nil

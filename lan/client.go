@@ -3,6 +3,7 @@ package lan
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
@@ -18,9 +19,9 @@ type Client struct {
 	maxReadyConnect int
 
 	// 地址
-	serverAddress      string
-	openAddress        string
-	applicationAddress string
+	serverAddress      *net.TCPAddr
+	openPort           int
+	applicationAddress *net.TCPAddr
 
 	handshaker *core.Handshaker
 	log        *logger.Logger
@@ -28,14 +29,12 @@ type Client struct {
 	// 待命连接计数
 	readyConnect int
 	readyLock    sync.Locker
-
-	binded bool
 }
 
 func StartClient(
-	serverAddress,
-	openAddress,
-	applicationAddress,
+	serverAddress *net.TCPAddr,
+	openPort int,
+	applicationAddress *net.TCPAddr,
 	handshakerKey string,
 	maxReadyConnect int,
 	connectTimeout,
@@ -50,35 +49,34 @@ func StartClient(
 		maxReadyConnect:    maxReadyConnect,
 		readyLock:          &sync.Mutex{},
 		readyConnect:       0,
-		openAddress:        openAddress,
+		openPort:           openPort,
 		applicationAddress: applicationAddress,
 		log:                log,
-		binded:             false,
 		handshaker:         core.MakeHandshaker(handshakerKey),
 	}
 
 	// 循环重试（直到绑定到服务端）
 	for {
 
+		// 是否关闭
+		closed := false
 		// 连接和绑定
-		bindResponse := it.connectAndBind()
+		bindResponse := it.connectAndBind(func() { closed = true })
 		if bindResponse == nil {
-			time.Sleep(10 * time.Second) // 10秒后重试
+			time.Sleep(5 * time.Second) // 10秒后重试
 			continue
 		}
 
 		// 运行循环器
-		it.loopRelayConnect(bindResponse)
+		it.loopRelayConnect(bindResponse, &closed)
 	}
 
 }
 
-func (it *Client) connectAndBind() *core.BindResponse {
-	// 未绑定
-	it.binded = false
+func (it *Client) connectAndBind(bindCloseCallback func()) *core.BindResponse {
 
 	// 连接绑定服务端
-	bindConn, err := net.DialTimeout("tcp", it.serverAddress, time.Duration(it.connectTimeout)*time.Second)
+	bindConn, err := net.DialTimeout("tcp", it.serverAddress.AddrPort().String(), time.Duration(it.connectTimeout)*time.Second)
 	if err != nil {
 		it.log.Error(err, "bind connect error")
 		return nil
@@ -94,9 +92,9 @@ func (it *Client) connectAndBind() *core.BindResponse {
 
 	// 发送绑定请求
 	if err := core.WriteAny(bindConn, &core.BindRequest{
-		Reqeust:     core.Reqeust{Action: "bind"},
-		ClientName:  bindConn.LocalAddr().String(),
-		OpenAddress: it.openAddress,
+		Reqeust:    core.Reqeust{Action: "bind"},
+		ClientName: bindConn.LocalAddr().String(),
+		OpenPort:   it.openPort,
 	}); err != nil {
 		it.log.Error(err, "write bind request error")
 		bindConn.Close()
@@ -111,30 +109,35 @@ func (it *Client) connectAndBind() *core.BindResponse {
 		return nil
 	}
 
-	// 绑定成功
-	it.binded = true
 	// 长连接，断开则关闭整个转发链路
 	go func() {
-		defer func() {
-			it.binded = false // 绑定结束
-			bindConn.Close()
-		}()
-
-		buff := make([]byte, 32)
+		defer bindConn.Close()
+		defer bindCloseCallback()
 		for {
-			size, err := bindConn.Read(buff)
+			_, err := bindConn.Write([]byte("heartbeat"))
 			if err != nil {
-				it.log.Debug("read bind heartbeat error:", err.Error())
+				it.log.Debug("write heartbeat error:", err.Error())
 				break
 			}
-			_, err = bindConn.Write(buff[:size])
+			it.log.Debug("heartbeat")
+			time.Sleep(time.Duration(bindResponse.Heartbeat) * time.Second)
+		}
+	}()
+	go func() {
+		defer bindConn.Close()
+		defer bindCloseCallback()
+		buff := make([]byte, 32)
+		for {
+			bindConn.SetReadDeadline(time.Now().Add(time.Duration(bindResponse.Heartbeat+it.ioTimeout) * time.Second))
+			_, err := bindConn.Read(buff)
 			if err != nil {
-				it.log.Debug("write bind heartbeat error:", err.Error())
+				it.log.Debug("read heartbeat error:", err.Error())
 				break
 			}
 		}
 	}()
 
+	// 返回
 	return bindResponse
 }
 
@@ -146,20 +149,20 @@ type relayConnectionBundle struct {
 }
 
 // 循环尝试连接服务端转发端口
-func (it *Client) loopRelayConnect(bindResponse *core.BindResponse) {
+func (it *Client) loopRelayConnect(bindResponse *core.BindResponse, closed *bool) {
 	var relayConn net.Conn
 	var errCount = 0
-	for it.binded {
+	for !*closed {
 
 		// 准备连接已满，等待
 		if it.readyConnect >= it.maxReadyConnect {
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(80 * time.Millisecond)
 			continue
 		}
 
 		// 连接服务端
 		var err error
-		relayConn, err = net.DialTimeout("tcp", bindResponse.RelayAddress, time.Duration(it.connectTimeout)*time.Second)
+		relayConn, err = net.DialTimeout("tcp", net.JoinHostPort(it.serverAddress.IP.String(), strconv.Itoa(bindResponse.RelayPort)), time.Duration(it.connectTimeout)*time.Second)
 		if err != nil { // 连接失败
 			errCount++
 			it.log.Error(err, "connect to relay server error", fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
@@ -206,33 +209,11 @@ func (it *Client) handleRelayConnection(bundle *relayConnectionBundle) {
 	it.startRelay(bundle)
 }
 
-// 处理连接
-// func (it *Client) handshake(bundle *relayConnectionBundle) error {
-
-// 	defer it.subReady() // 握手成功或失败后减少待命连接数
-
-// 	// 处理远程的握手
-// 	var buff = make([]byte, core.HandshakeDataLength)
-// 	_, err := io.ReadFull(bundle.relayConn, buff)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if !bundle.handshaker.CheckHandshake([64]byte(buff)) {
-// 		return fmt.Errorf("handshake fail")
-// 	}
-
-// 	newBuff := bundle.handshaker.MakeHandshake()
-
-// 	// 握手响应
-// 	_, err = bundle.relayConn.Write(newBuff[:])
-// 	return err
-// }
-
 // 转发 relayAddress <-> applicationAddress
 func (it *Client) startRelay(bundle *relayConnectionBundle) {
 
 	// 请求应用服务器
-	applicationConn, err := net.DialTimeout("tcp", it.applicationAddress, time.Duration(it.connectTimeout)*time.Second)
+	applicationConn, err := net.DialTimeout("tcp", it.applicationAddress.AddrPort().String(), time.Duration(it.connectTimeout)*time.Second)
 	if err != nil {
 		it.log.Debug("connect to application error:", err.Error())
 		return

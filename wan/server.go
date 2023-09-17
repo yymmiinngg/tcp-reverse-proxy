@@ -5,39 +5,43 @@ import (
 	"os"
 	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
+	"time"
 )
 
 type BindServer struct {
-	serverAddress string
-	ioTimeout     int
-	handshake     *core.Handshaker
-	log           *logger.Logger
+	bindAddress *net.TCPAddr
+	ioTimeout   int
+	handshake   *core.Handshaker
+	heartbeat   int
+	log         *logger.Logger
 }
 
 func StartBindServer(
-	serverPort string,
+	serverAddress *net.TCPAddr,
 	ioTimeout int,
 	handshakeKey string,
+	heartbeat int,
 	log *logger.Logger,
 ) {
 
 	// 实例化
 	it := &BindServer{
-		serverAddress: serverPort,
-		ioTimeout:     ioTimeout,
-		handshake:     core.MakeHandshaker(handshakeKey),
-		log:           log,
+		bindAddress: serverAddress,
+		ioTimeout:   ioTimeout,
+		handshake:   core.MakeHandshaker(handshakeKey),
+		heartbeat:   heartbeat,
+		log:         log,
 	}
 
 	// 监听服务端口
-	server, err := net.Listen("tcp", it.serverAddress)
+	server, err := net.Listen("tcp", it.bindAddress.AddrPort().String())
 	if err != nil {
 		it.log.Error(err, "listen bind server error")
 		os.Exit(1)
 		return
 	}
 	defer server.Close()
-	it.log.Info("start bind server at", it.serverAddress)
+	it.log.Info("start bind server at", it.bindAddress.AddrPort().String())
 
 	// 处理请求
 	for {
@@ -47,7 +51,7 @@ func StartBindServer(
 			break
 		}
 		it.log.Debug("get a bind connection", bindConn.LocalAddr().String(), "<-", bindConn.RemoteAddr().String())
-		it.HandlBindConn(bindConn)
+		go it.HandlBindConn(bindConn)
 	}
 }
 
@@ -69,26 +73,27 @@ func (it *BindServer) HandlBindConn(bindConn net.Conn) {
 		return
 	}
 
-	// 提取tcp地址
-	tcpAddr, err := net.ResolveTCPAddr("tcp", bindConn.LocalAddr().String())
-	if err != nil {
-		it.log.Debug("resolve bind address error:", err.Error())
-		return
-	}
-
 	// 启动转发服务
-	relayServer := StartRelayServer(tcpAddr.IP.String(), bindRequest.OpenAddress, it.ioTimeout, it.log)
+	relayServer := StartRelayServer(it.bindAddress.IP.String(), bindRequest.OpenPort, it.ioTimeout, it.log)
 	if relayServer == nil {
 		return
 	}
 	defer relayServer.Close()
 
+	// 转发服务的地址
+	relayAddr, err := net.ResolveTCPAddr("tcp", relayServer.relayListener.Addr().String())
+	if err != nil {
+		it.log.Debug("resolve relay address error:", err.Error())
+		return
+	}
+
 	// 响应绑定连接
 	err = core.WriteAny(bindConn, &core.BindResponse{
 		Response:     core.Response{Message: "success"},
 		ClientName:   bindRequest.ClientName,
-		RelayAddress: relayServer.relayListener.Addr().String(),
+		RelayPort:    relayAddr.Port, // 这里传端口是为了避免回传内网地址
 		HandshakeKey: relayServer.handshaker.UserKey,
+		Heartbeat:    it.heartbeat,
 	})
 	if err != nil {
 		it.log.Debug("response bind connection error:", err.Error())
@@ -96,21 +101,28 @@ func (it *BindServer) HandlBindConn(bindConn net.Conn) {
 	}
 
 	// 长连接，断开则关闭整个转发链路
-	buff := make([]byte, 32)
-	for {
-
-		size, err := bindConn.Read(buff)
-		if err != nil {
-			it.log.Debug("read bind heartbeat error:", err.Error())
-			break
+	go func() {
+		defer bindConn.Close()
+		for {
+			_, err := bindConn.Write([]byte("heartbeat"))
+			if err != nil {
+				it.log.Debug("write heartbeat error:", err.Error())
+				break
+			}
+			it.log.Debug("heartbeat")
+			time.Sleep(time.Duration(it.heartbeat) * time.Second)
 		}
-
-		_, err = bindConn.Write(buff[:size])
-		if err != nil {
-			it.log.Debug("write bind heartbeat error:", err.Error())
-			break
+	}()
+	func() {
+		defer bindConn.Close()
+		buff := make([]byte, 32)
+		for {
+			bindConn.SetReadDeadline(time.Now().Add(time.Duration(it.heartbeat+it.ioTimeout) * time.Second))
+			_, err := bindConn.Read(buff)
+			if err != nil {
+				it.log.Debug("read heartbeat error:", err.Error())
+				break
+			}
 		}
-
-	}
-
+	}()
 }

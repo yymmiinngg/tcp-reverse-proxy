@@ -2,6 +2,7 @@ package lan
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"tcp-tunnel/logger"
 
@@ -15,8 +16,8 @@ func Start(argsArr []string, log *logger.Logger) {
 	+ -a, --application-address  # Mapped TCP Address for the Application, (Format: ip:port,
 	#                              Default: 127.0.0.1:80)
 	* -s, --server-address       # Listen on a port for Client binding (Format: ip:port)
-	* -o, --open-address         # Instruct the server to open a port for relay traffic
-	#                              to the client (Format: ip:port)
+	* -o, --open-port            # Instruct the server to open a port for relay traffic to
+	#                              the client (Default is the port from application-address)
 	+ -r, --max-ready-connection # Maximum Ready Connection Count (Default: 5), Ready
 	#                              connections help improve client connection speed. The
 	#                              quantity limit is 1024.
@@ -39,7 +40,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	// 定义变量
 	var applicationAddress string
 	var serverAddress string
-	var openAddress string
+	var openPort int
 	var handshakeKey string
 
 	var maxReadyConnection, connectTimeout, ioTimeout int
@@ -47,7 +48,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	// 绑定变量
 	args.StringOption("-a", &applicationAddress, "127.0.0.1:80")
 	args.StringOption("-s", &serverAddress, "")
-	args.StringOption("-o", &openAddress, "")
+	args.IntOption("-o", &openPort, 0)
 	args.IntOption("-r", &maxReadyConnection, 5)
 	args.IntOption("-c", &connectTimeout, 10)
 	args.IntOption("-i", &ioTimeout, 120)
@@ -99,9 +100,28 @@ func Start(argsArr []string, log *logger.Logger) {
 		return
 	}
 
-	StartClient(serverAddress,
-		openAddress,
-		applicationAddress,
+	// 提取tcp地址
+	serverAddr, err := net.ResolveTCPAddr("tcp", serverAddress)
+	if err != nil {
+		fmt.Println("resolve server address error:", err.Error())
+		return
+	}
+
+	// 提取tcp地址
+	applicationAddr, err := net.ResolveTCPAddr("tcp", applicationAddress)
+	if err != nil {
+		fmt.Println("resolve server address error:", err.Error())
+		return
+	}
+
+	// 默认与应用的端口一致
+	if openPort == 0 {
+		openPort = applicationAddr.Port
+	}
+
+	StartClient(serverAddr,
+		openPort,
+		applicationAddr,
 		handshakeKey,
 		maxReadyConnection,
 		connectTimeout,

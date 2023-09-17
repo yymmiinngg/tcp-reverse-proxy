@@ -2,7 +2,9 @@ package wan
 
 import (
 	"fmt"
+	"net"
 	"os"
+	"strings"
 	"tcp-tunnel/logger"
 
 	"github.com/yymmiinngg/goargs"
@@ -21,10 +23,12 @@ func Start(argsArr []string, log *logger.Logger) {
     Usage: {{COMMAND}} WAN {{OPTION}}
 
 	+ -b, --bind-address      # Listen on a port for client connecting and binding, 
-	#                           Like "0.0.0.0:3390" (Default: ":3390")
-	+ -i, --io-timeout        # Read/Write Timeout Duration (Unit: Seconds, Default: 120)
+	#                           Like "0.0.0.0:3390" (Default: "0.0.0.0:3390")
 	+ -k, --handshake-key     # Handshake key used for binding connections to protect the
 	#                           server from unauthorized connection hijacking
+    + -t, --heartbeat         # bind server send heartbeat message to client in the life,
+	#                           in times (Unit: Seconds, Default: 60)
+	+ -i, --io-timeout        # Read/Write Timeout Duration (Unit: Seconds, Default: 120)
 
     ? -h, --help              # Show Help and Exit
     ? -v, --version           # Show Version and Exit
@@ -34,6 +38,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	var bindAddress string
 	var handshakeKey string
 	var ioTimeout int
+	var heartbeat int
 
 	// 编译模板
 	args, err := goargs.Compile(template)
@@ -44,9 +49,10 @@ func Start(argsArr []string, log *logger.Logger) {
 	}
 
 	// 绑定变量
-	args.StringOption("-b", &bindAddress, ":3390")
+	args.StringOption("-b", &bindAddress, "0.0.0.0:3390")
 	args.IntOption("-i", &ioTimeout, 120)
 	args.StringOption("-k", &handshakeKey, "")
+	args.IntOption("-t", &heartbeat, 60)
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
@@ -76,11 +82,24 @@ func Start(argsArr []string, log *logger.Logger) {
 		return
 	}
 
+	// 自动拼接IP
+	if strings.HasPrefix(bindAddress, ":") {
+		bindAddress = "0.0.0.0" + bindAddress
+	}
+
+	// 提取tcp地址
+	bindAddr, err := net.ResolveTCPAddr("tcp", bindAddress)
+	if err != nil {
+		fmt.Println("resolve bind address error:", err.Error())
+		return
+	}
+
 	// 启动服务
 	StartBindServer(
-		bindAddress,
+		bindAddr,
 		ioTimeout,
 		handshakeKey,
+		heartbeat,
 		log,
 	)
 }
