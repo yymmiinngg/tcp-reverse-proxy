@@ -36,7 +36,8 @@ CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
     -X 'main.BuildTime=$appBuildTime' \
     -X 'main.GoVersion=$appGoVersion'"
 
-distName=$appName-$appPlatform #-$appVersion
+distName=$appName-$appPlatform
+zipName=$appName-$appPlatform-$appVersion.zip
 
 echo "Clear files..."
 rm -rf $distDir/$distName
@@ -44,17 +45,19 @@ mkdir -p $distDir/$distName
 
 echo "Copy files..."
 mv $appName $distDir/$distName
-cp $buildDir/lib/tcprps.script $distDir/$distName
-cp $buildDir/lib/tcprps.conf $distDir/$distName
-cp $buildDir/lib/tcprps.sh $distDir/$distName
-cp $buildDir/lib/lib.sh $distDir/$distName
+cp -rf $buildDir/lib/tcprps.script $distDir/$distName
+cp -rf $buildDir/lib/tcprps.conf $distDir/$distName
+cp -rf $buildDir/lib/tcprps.sh $distDir/$distName
+cp -rf $buildDir/lib/lib.sh $distDir/$distName
+cp -rf $buildDir/makecert.sh $distDir/$distName
+cp -rf $buildDir/certs $distDir/$distName
 
 chmod +x $distDir/$distName/$appName
 chmod +x $distDir/$distName/tcprps.sh
 
 curDir=`pwd`
 cd $distDir
-zip -r $distName.zip $distName
+zip -r $zipName $distName
 cd $curDir
 
 echo "done"

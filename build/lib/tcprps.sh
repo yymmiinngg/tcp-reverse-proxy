@@ -9,30 +9,31 @@ if [ "$cmdDir" == "" ]; then
     exit 1
 fi
 
-# 参数
+# args
 cmd=tcprp
 command="$1"
 scriptFileInput="$2"
-time=$(date +"%Y%m%d%H%M%S")
+time=$(date +"%Y-%m-%d %H:%M:%S")
 
-# 配置文件
+# config file
 source $cmdDir/tcprps.conf
-# 使用默认脚本文件
+
+# default script file
 if [ "$scriptFileInput" == "" ]; then
     scriptFileInput="$defaultScriptFile"
 fi
 
-# 获得文件的绝对路径
+# absolute file path
 scriptFile=$(ireadlink "$scriptFileInput")
 if [ "$scriptFile" == "" ]; then
     echo file not found: $scriptFileInput
     exit 1
 fi
 
+# options
 options=""
-# 处理配置文件中的参数
 if [ "$debug" == "yes" ]; then
-    options="$options --debug"
+    options="--debug"
 fi
 
 if [ "$logFile" == "" ]; then
@@ -49,20 +50,20 @@ function Start {
         echo "is already running ($pid)"
     else
         chmod +x $cmdDir/$cmd
-        if [ "$options" == "" ]; then
-            echo $cmdDir/$cmd script "$scriptFile" -l "$logFile"
-            nohup $cmdDir/$cmd script "$scriptFile" -l "$logFile" >> $cmdDir/tcprps.console 2>&1 &
-        else
-            echo $cmdDir/$cmd script "$scriptFile" -l "$logFile" --debug
-            nohup $cmdDir/$cmd script "$scriptFile" -l "$logFile" --debug >> $cmdDir/tcprps.console 2>&1 &
-        fi
+        echo "" >> $cmdDir/tcprps.console
+        echo "[$time]" >> $cmdDir/tcprps.console
+        echo "$cmdDir/$cmd script \"$scriptFile\" -l \"$logFile\" $options" >> $cmdDir/tcprps.console
+        d=$(pwd)
+        cd $cmdDir
+        nohup $cmdDir/$cmd script "$scriptFile" -l "$logFile" $options >> $cmdDir/tcprps.console 2>&1 &
+        cd $d
         sleep 1
         if [ "$(Pid)" != "" ]; then
-            echo start success
+            echo start success >> $cmdDir/tcprps.console
         else
-            tail $cmdDir/tcprps.console
-            echo start fail
+            echo start fail >> $cmdDir/tcprps.console
         fi
+        tail $cmdDir/tcprps.console
     fi
 }
 

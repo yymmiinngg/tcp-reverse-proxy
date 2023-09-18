@@ -90,15 +90,15 @@ func main() {
 		return
 	}
 
-	// 错误输出
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-
 	// 显示帮助
 	if args.Has("-h", false) && (mode_ == "" || !strings.Contains(" LAN | WAN | SCRIPT ", strings.ToUpper(mode_))) {
 		fmt.Println(args.Usage())
+		return
+	}
+
+	// 错误输出
+	if err != nil {
+		fmt.Println(err.Error())
 		return
 	}
 

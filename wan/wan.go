@@ -22,23 +22,24 @@ func Start(argsArr []string, log *logger.Logger) {
 	template := `
     Usage: {{COMMAND}} WAN {{OPTION}}
 
-	+ -b, --bind-address      # Listen on a port for client connecting and binding, 
-	#                           Like "0.0.0.0:3390" (Default: "0.0.0.0:3390")
-	+ -k, --handshake-key     # Handshake key used for binding connections to protect the
-	#                           server from unauthorized connection hijacking
-    + -t, --heartbeat         # bind server send heartbeat message to client in the life,
-	#                           in times (Unit: Seconds, Default: 60)
-	+ -i, --io-timeout        # Read/Write Timeout Duration (Unit: Seconds, Default: 120)
+	+ -b, --bind-address          # Listen on a port for client connecting and binding, 
+	#                               Like "0.0.0.0:3390" (Default: "0.0.0.0:3390")
+	+ -k, --handshake-key         # Handshake key used for binding connections to protect the
+	#                               server from unauthorized connection hijacking
+	+ -i, --io-timeout            # Read/Write Timeout Duration in relaying (Unit: Seconds,
+	#                               Default: 120)
+	+ -C, --tls-x509-certificate  # The Certificate of tls
+	+ -K, --tls-x509-key          # The private key of tls
 
-    ? -h, --help              # Show Help and Exit
-    ? -v, --version           # Show Version and Exit
+    ? -h, --help                  # Show Help and Exit
+    ? -v, --version               # Show Version and Exit
 `
 
 	// 定义变量
 	var bindAddress string
 	var handshakeKey string
 	var ioTimeout int
-	var heartbeat int
+	var tlsCertificate, tlsPrivateKey string
 
 	// 编译模板
 	args, err := goargs.Compile(template)
@@ -52,7 +53,8 @@ func Start(argsArr []string, log *logger.Logger) {
 	args.StringOption("-b", &bindAddress, "0.0.0.0:3390")
 	args.IntOption("-i", &ioTimeout, 120)
 	args.StringOption("-k", &handshakeKey, "")
-	args.IntOption("-t", &heartbeat, 60)
+	args.StringOption("-C", &tlsCertificate, "")
+	args.StringOption("-K", &tlsPrivateKey, "")
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
@@ -94,12 +96,19 @@ func Start(argsArr []string, log *logger.Logger) {
 		return
 	}
 
+	// 证书和密钥必须成对出现
+	if (tlsCertificate != "" && tlsPrivateKey == "") || (tlsCertificate == "" && tlsPrivateKey != "") {
+		fmt.Println("tls certificate and private key must be pair")
+		return
+	}
+
 	// 启动服务
 	StartBindServer(
 		bindAddr,
 		ioTimeout,
 		handshakeKey,
-		heartbeat,
 		log,
+		tlsCertificate,
+		tlsPrivateKey,
 	)
 }

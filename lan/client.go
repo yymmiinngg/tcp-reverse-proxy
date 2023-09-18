@@ -1,10 +1,12 @@
 package lan
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"strconv"
 	"sync"
+	"tcp-tunnel/config"
 	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
 	nets "tcp-tunnel/net"
@@ -15,7 +17,7 @@ type Client struct {
 
 	// 设置
 	connectTimeout  int
-	ioTimeout       int
+	relayIoTimeout  int
 	maxReadyConnect int
 
 	// 地址
@@ -38,14 +40,15 @@ func StartClient(
 	handshakerKey string,
 	maxReadyConnect int,
 	connectTimeout,
-	ioTimeout int,
+	relayIoTimeout int,
 	log *logger.Logger,
+	useTls bool,
 ) {
 
 	it := &Client{
 		serverAddress:      serverAddress,
 		connectTimeout:     connectTimeout,
-		ioTimeout:          ioTimeout,
+		relayIoTimeout:     relayIoTimeout,
 		maxReadyConnect:    maxReadyConnect,
 		readyLock:          &sync.Mutex{},
 		readyConnect:       0,
@@ -61,7 +64,7 @@ func StartClient(
 		// 是否关闭
 		closed := false
 		// 连接和绑定
-		bindResponse := it.connectAndBind(func() { closed = true })
+		bindResponse := it.connectAndBind(useTls, func() { closed = true })
 		if bindResponse == nil {
 			time.Sleep(5 * time.Second) // 10秒后重试
 			continue
@@ -73,17 +76,32 @@ func StartClient(
 
 }
 
-func (it *Client) connectAndBind(bindCloseCallback func()) *core.BindResponse {
+func (it *Client) connectAndBind(useTls bool, bindCloseCallback func()) *core.BindResponse {
+
+	var bindConn net.Conn
+	var err error
 
 	// 连接绑定服务端
-	bindConn, err := net.DialTimeout("tcp", it.serverAddress.AddrPort().String(), time.Duration(it.connectTimeout)*time.Second)
-	if err != nil {
-		it.log.Error(err, "bind connect error")
-		return nil
+	if useTls {
+		it.log.Debug("connect to tls bind server", it.serverAddress.AddrPort().String())
+		d := &net.Dialer{Timeout: time.Duration(it.connectTimeout) * time.Second, KeepAlive: config.KeepAlive}
+		bindConn, err = tls.DialWithDialer(d, "tcp", it.serverAddress.AddrPort().String(), &tls.Config{InsecureSkipVerify: true})
+		if err != nil {
+			it.log.Error(err, "tls bind connect error")
+			return nil
+		}
+	} else {
+		it.log.Debug("connect to tcp bind server", it.serverAddress.AddrPort().String())
+		d := &net.Dialer{Timeout: time.Duration(it.connectTimeout) * time.Second, KeepAlive: config.KeepAlive * time.Second}
+		bindConn, err = d.Dial("tcp", it.serverAddress.AddrPort().String())
+		if err != nil {
+			it.log.Error(err, "tcp bind connect error")
+			return nil
+		}
 	}
 
 	// 绑定连接的握手
-	err = it.handshaker.RwHandshake(bindConn, it.ioTimeout)
+	err = it.handshaker.RwHandshake(bindConn, config.IOTimeout)
 	if err != nil {
 		it.log.Debug("handshake error:", err.Error())
 		bindConn.Close()
@@ -109,29 +127,15 @@ func (it *Client) connectAndBind(bindCloseCallback func()) *core.BindResponse {
 		return nil
 	}
 
-	// 长连接，断开则关闭整个转发链路
-	go func() {
-		defer bindConn.Close()
-		defer bindCloseCallback()
-		for {
-			_, err := bindConn.Write([]byte("heartbeat"))
-			if err != nil {
-				it.log.Debug("write heartbeat error:", err.Error())
-				break
-			}
-			it.log.Debug("heartbeat")
-			time.Sleep(time.Duration(bindResponse.Heartbeat) * time.Second)
-		}
-	}()
+	// 长连接，断开则关闭代理
 	go func() {
 		defer bindConn.Close()
 		defer bindCloseCallback()
 		buff := make([]byte, 32)
 		for {
-			bindConn.SetReadDeadline(time.Now().Add(time.Duration(bindResponse.Heartbeat+it.ioTimeout) * time.Second))
 			_, err := bindConn.Read(buff)
 			if err != nil {
-				it.log.Debug("read heartbeat error:", err.Error())
+				it.log.Debug("break bind:", err.Error())
 				break
 			}
 		}
@@ -228,7 +232,7 @@ func (it *Client) startRelay(bundle *relayConnectionBundle) {
 
 	// 转发
 	it.log.Debug("relay", bundle.relayConn.LocalAddr().String(), "<->", applicationConn.LocalAddr().String())
-	nets.Relay(bundle.relayConn, applicationConn, it.ioTimeout)
+	nets.Relay(bundle.relayConn, applicationConn, it.relayIoTimeout)
 }
 
 func (it *Client) addReady() {

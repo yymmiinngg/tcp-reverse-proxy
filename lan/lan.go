@@ -11,23 +11,26 @@ import (
 
 func Start(argsArr []string, log *logger.Logger) {
 	template := `
-    Usage: {{COMMAND}} LAN {{OPTION}}
+	Usage: {{COMMAND}} LAN {{OPTION}}
 
 	+ -a, --application-address  # Mapped TCP Address for the Application, (Format: ip:port,
 	#                              Default: 127.0.0.1:80)
 	* -s, --server-address       # Listen on a port for Client binding (Format: ip:port)
 	* -o, --open-port            # Instruct the server to open a port for relay traffic to
-	#                              the client (Default is the port from application-address)
-	+ -r, --max-ready-connection # Maximum Ready Connection Count (Default: 5), Ready
-	#                              connections help improve client connection speed. The
-	#                              quantity limit is 1024.
+	#                              the client (Default is the same of application-address)
+	+ -r, --ready-connection     # Ready Connection Count (Default: 5), Ready connections
+	#                              help improve client connection speed. The quantity limit
+	#                              is 1024.
 	+ -c, --connect-timeout      # Connection Timeout Duration (Unit: Seconds, Default: 10)
-	+ -i, --io-timeout           # Read/Write Timeout Duration (Unit: Seconds, Default: 120)
+	+ -i, --io-timeout           # Read/Write Timeout Duration in relaying (Unit: Seconds,
+	#                              Default: 120)
 	+ -k, --handshake-key        # Handshake Key, Preventing Unauthorized Use of WAN Port
 
-    ? -h, --help                 # Show Help and Exit
-    ? -v, --version              # Show Version and Exit
-    `
+	? -T, --tls                  # Use tls bind
+
+	? -h, --help                 # Show Help and Exit
+ 	? -v, --version              # Show Version and Exit
+	`
 
 	// 编译模板
 	args, err := goargs.Compile(template)
@@ -42,17 +45,18 @@ func Start(argsArr []string, log *logger.Logger) {
 	var serverAddress string
 	var openPort int
 	var handshakeKey string
-
-	var maxReadyConnection, connectTimeout, ioTimeout int
+	var readyConnection, connectTimeout, ioTimeout int
+	var tls bool
 
 	// 绑定变量
 	args.StringOption("-a", &applicationAddress, "127.0.0.1:80")
 	args.StringOption("-s", &serverAddress, "")
 	args.IntOption("-o", &openPort, 0)
-	args.IntOption("-r", &maxReadyConnection, 5)
+	args.IntOption("-r", &readyConnection, 5)
 	args.IntOption("-c", &connectTimeout, 10)
 	args.IntOption("-i", &ioTimeout, 120)
 	args.StringOption("-k", &handshakeKey, "")
+	args.BoolOption("-T", &tls, false)
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
@@ -76,13 +80,13 @@ func Start(argsArr []string, log *logger.Logger) {
 		return
 	}
 
-	if maxReadyConnection < 1 {
+	if readyConnection < 1 {
 		fmt.Println("The minimum ready connection count is 1")
 		os.Exit(1)
 		return
 	}
 
-	if maxReadyConnection > 1024 {
+	if readyConnection > 1024 {
 		fmt.Println("The maximum ready connection count is 1024")
 		os.Exit(1)
 		return
@@ -123,9 +127,10 @@ func Start(argsArr []string, log *logger.Logger) {
 		openPort,
 		applicationAddr,
 		handshakeKey,
-		maxReadyConnection,
+		readyConnection,
 		connectTimeout,
 		ioTimeout,
 		log,
+		tls,
 	)
 }

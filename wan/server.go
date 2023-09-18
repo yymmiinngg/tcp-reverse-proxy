@@ -1,48 +1,68 @@
 package wan
 
 import (
+	"crypto/tls"
 	"net"
 	"os"
+	"tcp-tunnel/config"
 	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
-	"time"
 )
 
 type BindServer struct {
 	bindAddress *net.TCPAddr
 	ioTimeout   int
 	handshake   *core.Handshaker
-	heartbeat   int
 	log         *logger.Logger
 }
 
 func StartBindServer(
-	serverAddress *net.TCPAddr,
+	bindAddress *net.TCPAddr,
 	ioTimeout int,
 	handshakeKey string,
-	heartbeat int,
 	log *logger.Logger,
+	tlsCertificate string,
+	tlsPrivateKey string,
 ) {
 
 	// 实例化
 	it := &BindServer{
-		bindAddress: serverAddress,
+		bindAddress: bindAddress,
 		ioTimeout:   ioTimeout,
 		handshake:   core.MakeHandshaker(handshakeKey),
-		heartbeat:   heartbeat,
 		log:         log,
 	}
 
-	// 监听服务端口
-	server, err := net.Listen("tcp", it.bindAddress.AddrPort().String())
-	if err != nil {
-		it.log.Error(err, "listen bind server error")
-		os.Exit(1)
-		return
+	if tlsCertificate != "" {
+		// 证书配置
+		cert, err := tls.LoadX509KeyPair(tlsCertificate, tlsPrivateKey)
+		if err != nil {
+			it.log.Error(err, "load x509 key pair error")
+			return
+		}
+		// TLSs监听服务端口
+		server, err := tls.Listen("tcp", it.bindAddress.AddrPort().String(), &tls.Config{Certificates: []tls.Certificate{cert}, InsecureSkipVerify: true})
+		if err != nil {
+			it.log.Error(err, "listen tls bind server error")
+			return
+		}
+		it.log.Info("start tls bind server at", it.bindAddress.AddrPort().String())
+		it.accept(server)
+	} else {
+		// TCP监听服务端口
+		server, err := net.Listen("tcp", it.bindAddress.AddrPort().String())
+		if err != nil {
+			it.log.Error(err, "listen tcp bind server error")
+			os.Exit(1)
+			return
+		}
+		it.log.Info("start tcp bind server at", it.bindAddress.AddrPort().String())
+		it.accept(server)
 	}
-	defer server.Close()
-	it.log.Info("start bind server at", it.bindAddress.AddrPort().String())
+}
 
+func (it *BindServer) accept(server net.Listener) {
+	defer server.Close()
 	// 处理请求
 	for {
 		bindConn, err := server.Accept()
@@ -51,16 +71,16 @@ func StartBindServer(
 			break
 		}
 		it.log.Debug("get a bind connection", bindConn.LocalAddr().String(), "<-", bindConn.RemoteAddr().String())
-		go it.HandlBindConn(bindConn)
+		go it.handleBindConn(bindConn)
 	}
 }
 
 // 处理请求
-func (it *BindServer) HandlBindConn(bindConn net.Conn) {
+func (it *BindServer) handleBindConn(bindConn net.Conn) {
 	defer bindConn.Close()
 
 	// 通信前握手
-	err := it.handshake.WrHandshake(bindConn, it.ioTimeout)
+	err := it.handshake.WrHandshake(bindConn, config.IOTimeout)
 	if err != nil {
 		it.log.Debug("handshaker error:", err.Error())
 		return
@@ -93,34 +113,20 @@ func (it *BindServer) HandlBindConn(bindConn net.Conn) {
 		ClientName:   bindRequest.ClientName,
 		RelayPort:    relayAddr.Port, // 这里传端口是为了避免回传内网地址
 		HandshakeKey: relayServer.handshaker.UserKey,
-		Heartbeat:    it.heartbeat,
 	})
 	if err != nil {
 		it.log.Debug("response bind connection error:", err.Error())
 		return
 	}
 
-	// 长连接，断开则关闭整个转发链路
-	go func() {
-		defer bindConn.Close()
-		for {
-			_, err := bindConn.Write([]byte("heartbeat"))
-			if err != nil {
-				it.log.Debug("write heartbeat error:", err.Error())
-				break
-			}
-			it.log.Debug("heartbeat")
-			time.Sleep(time.Duration(it.heartbeat) * time.Second)
-		}
-	}()
+	// 长连接，断开则关闭代理
 	func() {
 		defer bindConn.Close()
 		buff := make([]byte, 32)
 		for {
-			bindConn.SetReadDeadline(time.Now().Add(time.Duration(it.heartbeat+it.ioTimeout) * time.Second))
 			_, err := bindConn.Read(buff)
 			if err != nil {
-				it.log.Debug("read heartbeat error:", err.Error())
+				it.log.Debug("break bind:", err.Error())
 				break
 			}
 		}

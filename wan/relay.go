@@ -5,6 +5,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"tcp-tunnel/config"
 	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
 	nets "tcp-tunnel/net"
@@ -14,13 +15,13 @@ import (
 )
 
 type RelayServer struct {
-	relayBindHost string
-	openPort      int
-	handshaker    *core.Handshaker
-	ioTimeout     int
-	lanConns      chan net.Conn
-	lanConnsLock  sync.Locker
-	log           *logger.Logger
+	relayBindHost  string
+	openPort       int
+	handshaker     *core.Handshaker
+	relayIoTimeout int
+	lanConns       chan net.Conn
+	lanConnsLock   sync.Locker
+	log            *logger.Logger
 	// 两个重要的监听器
 	relayListener       net.Listener
 	applicationListener net.Listener
@@ -49,20 +50,20 @@ func (it *RelayServer) Close() {
 func StartRelayServer(
 	relayBindHost string,
 	openPort int,
-	ioTimeout int,
+	relayIoTimeout int,
 	log *logger.Logger,
 ) *RelayServer {
 
 	// 随机一个密钥
 	handshakerKey := uuid.New().String()
 	it := &RelayServer{
-		relayBindHost: relayBindHost,
-		openPort:      openPort,
-		handshaker:    core.MakeHandshaker(handshakerKey),
-		ioTimeout:     ioTimeout,
-		lanConnsLock:  &sync.Mutex{},
-		lanConns:      make(chan net.Conn, 10),
-		log:           log,
+		relayBindHost:  relayBindHost,
+		openPort:       openPort,
+		handshaker:     core.MakeHandshaker(handshakerKey),
+		relayIoTimeout: relayIoTimeout,
+		lanConnsLock:   &sync.Mutex{},
+		lanConns:       make(chan net.Conn, 1024),
+		log:            log,
 	}
 
 	// 转发端口监听
@@ -139,7 +140,7 @@ func (it *RelayServer) takeRelayConn() (net.Conn, error) {
 		aliveCount := len(it.lanConns)
 		if aliveCount == 0 {
 			// 等待连接超时
-			if time.Since(startTime) >= time.Duration(it.ioTimeout) {
+			if time.Since(startTime) >= time.Duration(config.IOTimeout) {
 				return nil, fmt.Errorf("wait relay connection timeout")
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -152,7 +153,7 @@ func (it *RelayServer) takeRelayConn() (net.Conn, error) {
 		it.lanConnsLock.Unlock()
 
 		// 通信前握手
-		err := it.handshaker.WrHandshake(lanConn, it.ioTimeout)
+		err := it.handshaker.WrHandshake(lanConn, config.IOTimeout)
 		if err != nil {
 			lanConn.Close()
 			it.log.Debug("handshaker error:", err.Error())
@@ -173,5 +174,5 @@ func (it *RelayServer) relay(clientConn, lanConn net.Conn) {
 
 	//  转发
 	it.log.Debug("relay", clientConn.RemoteAddr().String(), "<->", lanConn.RemoteAddr().String())
-	nets.Relay(clientConn, lanConn, it.ioTimeout)
+	nets.Relay(clientConn, lanConn, it.relayIoTimeout)
 }

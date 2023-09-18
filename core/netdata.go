@@ -24,7 +24,6 @@ type BindResponse struct {
 	ClientName   string `json:"clientName"`
 	RelayPort    int    `json:"relayPort"`
 	HandshakeKey string `json:"handshakeKey"`
-	Heartbeat    int    `json:"heartbeat"`
 }
 
 type UnBindRequest struct {
