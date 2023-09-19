@@ -83,7 +83,7 @@ func (it *Client) connectAndBind(useTls bool, bindCloseCallback func()) *core.Bi
 
 	// 连接绑定服务端
 	if useTls {
-		it.log.Debug("connect to tls bind server", it.serverAddress.AddrPort().String())
+		it.log.Debug("connect to tls bind server", it.serverAddress.AddrPort().String(), "-", strconv.Itoa(it.openPort))
 		d := &net.Dialer{Timeout: time.Duration(it.connectTimeout) * time.Second, KeepAlive: config.KeepAlive}
 		bindConn, err = tls.DialWithDialer(d, "tcp", it.serverAddress.AddrPort().String(), &tls.Config{InsecureSkipVerify: true})
 		if err != nil {
@@ -181,7 +181,7 @@ func (it *Client) loopRelayConnect(bindResponse *core.BindResponse, closed *bool
 		}
 
 		// 连接成功
-		it.log.Debug("connect to relay server", relayConn.LocalAddr().String(), "->", relayConn.RemoteAddr().String(), fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect))
+		it.log.Debug("connect to relay server", relayConn.LocalAddr().String(), "->", relayConn.RemoteAddr().String(), fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect), "-", strconv.Itoa(it.openPort))
 
 		// 增待命连接数
 		it.addReady()
