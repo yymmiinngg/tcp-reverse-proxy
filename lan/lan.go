@@ -3,7 +3,6 @@ package lan
 import (
 	"fmt"
 	"net"
-	"os"
 	"tcp-tunnel/logger"
 
 	"github.com/yymmiinngg/goargs"
@@ -16,7 +15,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	+ -a, --application-address  # Mapped TCP Address for the Application, (Format: ip:port,
 	#                              Default: 127.0.0.1:80)
 	* -s, --server-address       # Listen on a port for Client binding (Format: ip:port)
-	* -o, --open-port            # Instruct the server to open a port for relay traffic to
+	+ -o, --open-port            # Instruct the server to open a port for relay traffic to
 	#                              the client (Default is the same of application-address)
 	+ -r, --ready-connection     # Ready Connection Count (Default: 5), Ready connections
 	#                              help improve client connection speed. The quantity limit
@@ -36,7 +35,6 @@ func Start(argsArr []string, log *logger.Logger) {
 	args, err := goargs.Compile(template)
 	if err != nil {
 		fmt.Println(err.Error())
-		os.Exit(1)
 		return
 	}
 
@@ -76,31 +74,26 @@ func Start(argsArr []string, log *logger.Logger) {
 	// 错误输出
 	if err != nil {
 		fmt.Println(err.Error())
-		os.Exit(1)
 		return
 	}
 
 	if readyConnection < 1 {
 		fmt.Println("The minimum ready connection count is 1")
-		os.Exit(1)
 		return
 	}
 
 	if readyConnection > 1024 {
 		fmt.Println("The maximum ready connection count is 1024")
-		os.Exit(1)
 		return
 	}
 
 	if connectTimeout == 0 {
 		fmt.Println("The connection timeout duration cannot be less than 1")
-		os.Exit(1)
 		return
 	}
 
 	if ioTimeout == 0 {
 		fmt.Println("The io timeout duration cannot be less than 1")
-		os.Exit(1)
 		return
 	}
 

@@ -74,13 +74,11 @@ func Start(argsArr []string, log *logger.Logger) {
 	// 错误输出
 	if err != nil {
 		fmt.Println(err.Error())
-		os.Exit(1)
 		return
 	}
 
 	if ioTimeout == 0 {
 		fmt.Println("The io timeout duration cannot be less than 1")
-		os.Exit(1)
 		return
 	}
 

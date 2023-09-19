@@ -66,7 +66,7 @@ func StartClient(
 		// 连接和绑定
 		bindResponse := it.connectAndBind(useTls, func() { closed = true })
 		if bindResponse == nil {
-			time.Sleep(5 * time.Second) // 10秒后重试
+			time.Sleep(5 * time.Second) // 重试
 			continue
 		}
 
@@ -160,7 +160,7 @@ func (it *Client) loopRelayConnect(bindResponse *core.BindResponse, closed *bool
 
 		// 准备连接已满，等待
 		if it.readyConnect >= it.maxReadyConnect {
-			time.Sleep(80 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 
@@ -193,8 +193,8 @@ func (it *Client) loopRelayConnect(bindResponse *core.BindResponse, closed *bool
 }
 
 func (it *Client) handleRelayConnection(bundle *relayConnectionBundle) {
-
-	defer bundle.relayConn.Close() // 关闭转发连接
+	// 关闭转发连接
+	defer bundle.relayConn.Close()
 
 	// 是否握手失败
 	if func() bool {

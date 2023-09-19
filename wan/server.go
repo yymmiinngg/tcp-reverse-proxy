@@ -3,7 +3,6 @@ package wan
 import (
 	"crypto/tls"
 	"net"
-	"os"
 	"tcp-tunnel/config"
 	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
@@ -53,7 +52,6 @@ func StartBindServer(
 		server, err := net.Listen("tcp", it.bindAddress.AddrPort().String())
 		if err != nil {
 			it.log.Error(err, "listen tcp bind server error")
-			os.Exit(1)
 			return
 		}
 		it.log.Info("start tcp bind server at", it.bindAddress.AddrPort().String())
