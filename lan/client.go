@@ -16,18 +16,19 @@ import (
 type Client struct {
 
 	// 设置
-	connectTimeout  int
-	relayIoTimeout  int
-	maxReadyConnect int
-
+	connectTimeout      int
+	relayIoTimeout      int
+	maxReadyConnect     int
+	keepaliveConnection int
 	// 地址
 	serverAddress      *net.TCPAddr
-	openPort           int
+	openPort           string
 	applicationAddress *net.TCPAddr
 
-	handshaker *core.Handshaker
-	log        *logger.Logger
-	encryptKey string
+	handshaker      *core.Handshaker
+	log             *logger.Logger
+	encryptKey      string
+	relayHandshaker *core.Handshaker
 
 	// 待命连接计数
 	readyConnect int
@@ -36,29 +37,37 @@ type Client struct {
 
 func StartClient(
 	serverAddress *net.TCPAddr,
-	openPort int,
+	openAddress string,
 	applicationAddress *net.TCPAddr,
 	handshakerKey string,
 	maxReadyConnect int,
 	connectTimeout,
 	relayIoTimeout int,
+	keepaliveConnection int,
 	log *logger.Logger,
 	useTls bool,
 	encryptKey string,
 ) {
 
 	it := &Client{
-		serverAddress:      serverAddress,
-		connectTimeout:     connectTimeout,
-		relayIoTimeout:     relayIoTimeout,
-		maxReadyConnect:    maxReadyConnect,
-		readyLock:          &sync.Mutex{},
-		readyConnect:       0,
-		openPort:           openPort,
-		applicationAddress: applicationAddress,
-		log:                log,
-		handshaker:         core.MakeHandshaker(handshakerKey),
-		encryptKey:         encryptKey,
+		serverAddress:       serverAddress,
+		connectTimeout:      connectTimeout,
+		relayIoTimeout:      relayIoTimeout,
+		keepaliveConnection: keepaliveConnection,
+		maxReadyConnect:     maxReadyConnect,
+		readyLock:           &sync.Mutex{},
+		readyConnect:        0,
+		openPort:            openAddress,
+		applicationAddress:  applicationAddress,
+		log:                 log,
+		handshaker:          core.MakeHandshaker(handshakerKey),
+		encryptKey:          encryptKey,
+		relayHandshaker: func() *core.Handshaker {
+			if encryptKey != "" {
+				return core.MakeHandshaker(encryptKey)
+			}
+			return nil
+		}(),
 	}
 
 	// 循环重试（直到绑定到服务端）
@@ -86,8 +95,8 @@ func (it *Client) connectAndBind(useTls bool, bindCloseCallback func()) *core.Bi
 
 	// 连接绑定服务端
 	if useTls {
-		it.log.Debug("connect to tls bind server", it.serverAddress.AddrPort().String(), "-", strconv.Itoa(it.openPort))
-		d := &net.Dialer{Timeout: time.Duration(it.connectTimeout) * time.Second, KeepAlive: config.KeepAlive}
+		it.log.Debug("connect to tls bind server", it.serverAddress.AddrPort().String(), "-", it.openPort)
+		d := &net.Dialer{Timeout: time.Duration(it.connectTimeout) * time.Second}
 		bindConn, err = tls.DialWithDialer(d, "tcp", it.serverAddress.AddrPort().String(), &tls.Config{InsecureSkipVerify: true})
 		if err != nil {
 			it.log.Error(err, "tls bind connect error")
@@ -95,7 +104,7 @@ func (it *Client) connectAndBind(useTls bool, bindCloseCallback func()) *core.Bi
 		}
 	} else {
 		it.log.Debug("connect to tcp bind server", it.serverAddress.AddrPort().String())
-		d := &net.Dialer{Timeout: time.Duration(it.connectTimeout) * time.Second, KeepAlive: config.KeepAlive * time.Second}
+		d := &net.Dialer{Timeout: time.Duration(it.connectTimeout) * time.Second}
 		bindConn, err = d.Dial("tcp", it.serverAddress.AddrPort().String())
 		if err != nil {
 			it.log.Error(err, "tcp bind connect error")
@@ -104,9 +113,9 @@ func (it *Client) connectAndBind(useTls bool, bindCloseCallback func()) *core.Bi
 	}
 
 	// 绑定连接的握手
-	err = it.handshaker.RwHandshake(bindConn, config.IOTimeout)
+	err = it.handshaker.RwHandshake(bindConn, config.WaitTimeout)
 	if err != nil {
-		it.log.Debug("handshake error:", err.Error())
+		it.log.Debug("bind handshake error:", err.Error())
 		bindConn.Close()
 		return nil
 	}
@@ -134,13 +143,25 @@ func (it *Client) connectAndBind(useTls bool, bindCloseCallback func()) *core.Bi
 	go func() {
 		defer bindConn.Close()
 		defer bindCloseCallback()
-		buff := make([]byte, 32)
+		buff := make([]byte, 64)
+		go func() {
+			defer bindConn.Close()
+			defer bindCloseCallback()
+			for {
+				time.Sleep(time.Duration(it.keepaliveConnection) * time.Second)
+				_, err := bindConn.Write([]byte(time.Now().Local().String()))
+				if err != nil {
+					break
+				}
+			}
+		}()
 		for {
-			_, err := bindConn.Read(buff)
+			size, err := bindConn.Read(buff)
 			if err != nil {
 				it.log.Debug("break bind:", err.Error())
 				break
 			}
+			it.log.Debug("bind keepalive package:", string(buff[:size]))
 		}
 	}()
 
@@ -184,7 +205,7 @@ func (it *Client) loopRelayConnect(bindResponse *core.BindResponse, closed *bool
 		}
 
 		// 连接成功
-		it.log.Debug("connect to relay server", relayConn.LocalAddr().String(), "->", relayConn.RemoteAddr().String(), fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect), "-", strconv.Itoa(it.openPort))
+		it.log.Debug("connect to relay server", relayConn.LocalAddr().String(), "->", relayConn.RemoteAddr().String(), fmt.Sprintf("[%d/%d]", it.readyConnect+1, it.maxReadyConnect), "-", it.openPort)
 
 		// 增待命连接数
 		it.addReady()
@@ -238,9 +259,15 @@ func (it *Client) startRelay(bundle *relayConnectionBundle) {
 	// 加解密处理器
 	var cryptor core.Cryptor
 	if it.encryptKey != "" {
-		cryptor, err = core.NewXChaCha20Crypto([]byte(it.encryptKey))
+		cryptor, err = core.NewXChaCha20Crypto(it.encryptKey)
 		if err != nil {
-			it.log.Debug("make chacha20 cryptor error", err.Error())
+			it.log.Debug("make cryptor error", err.Error())
+			return
+		}
+		// 加密连接的握手
+		err = it.relayHandshaker.WrHandshake(bundle.relayConn, config.WaitTimeout)
+		if err != nil {
+			it.log.Debug("relay handshake error:", err.Error())
 			return
 		}
 	}

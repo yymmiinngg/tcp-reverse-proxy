@@ -28,10 +28,10 @@ func Start(argsArr []string, log *logger.Logger) {
 	#                               server from unauthorized connection hijacking
 	+ -i, --io-timeout            # Read/Write Timeout Duration in relaying (Unit: Seconds,
 	#                               Default: 120)
-	+ -C, --tls-x509-certificate  # The Certificate of tls
-	+ -K, --tls-x509-key          # The private key of tls
+	+ -C, --tls-x509-certificate  # The Certificate of tls connection
+	+ -K, --tls-x509-key          # The private key of tls connection
 
-    ?     --help                  # Show Help and Exit
+    ? -H, --help                  # Show Help and Exit
 `
 
 	// 定义变量
@@ -59,14 +59,8 @@ func Start(argsArr []string, log *logger.Logger) {
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示帮助
-	if args.Has("--help", false) {
+	if args.HasItem("-H", "--help") {
 		fmt.Println(args.Usage())
-		return
-	}
-
-	// 显示版本
-	if args.Has("-v", false) {
-		fmt.Println("v0.0.1")
 		return
 	}
 

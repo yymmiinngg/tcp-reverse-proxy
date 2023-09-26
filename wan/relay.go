@@ -16,7 +16,7 @@ import (
 
 type RelayServer struct {
 	relayBindHost  string
-	openPort       int
+	openAddress    string
 	handshaker     *core.Handshaker
 	relayIoTimeout int
 	lanConns       chan net.Conn
@@ -49,7 +49,7 @@ func (it *RelayServer) Close() {
 // 局域网的连接
 func StartRelayServer(
 	relayBindHost string,
-	openPort int,
+	openAddress string,
 	relayIoTimeout int,
 	log *logger.Logger,
 ) *RelayServer {
@@ -58,7 +58,7 @@ func StartRelayServer(
 	handshakerKey := uuid.New().String()
 	it := &RelayServer{
 		relayBindHost:  relayBindHost,
-		openPort:       openPort,
+		openAddress:    openAddress,
 		handshaker:     core.MakeHandshaker(handshakerKey),
 		relayIoTimeout: relayIoTimeout,
 		lanConnsLock:   &sync.Mutex{},
@@ -67,14 +67,14 @@ func StartRelayServer(
 	}
 
 	// 转发端口监听
-	relayListener, err := net.Listen("tcp", net.JoinHostPort(it.relayBindHost, "0")) // 任意端口
+	relayListener, err := net.Listen("tcp", net.JoinHostPort(it.relayBindHost, "0")) // 任意端口，跟绑定端口的IP一致
 	if err != nil {
 		it.log.Error(err, "listen relay port error")
 		return nil
 	}
 
 	// 应用端口监听
-	openListener, err := net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(openPort)))
+	openListener, err := net.Listen("tcp", it.openAddress)
 	if err != nil {
 		it.log.Error(err, "listen application port error")
 		relayListener.Close() // 关闭转发监听
@@ -103,7 +103,7 @@ func StartRelayServer(
 
 	// 处理应用连接
 	go func() {
-		it.log.Info("start application port:", strconv.Itoa(it.openPort))
+		it.log.Info("start application port:", it.openAddress)
 		for {
 			clientConn, err := openListener.Accept()
 			if err != nil {
@@ -140,7 +140,7 @@ func (it *RelayServer) takeRelayConn() (net.Conn, error) {
 		aliveCount := len(it.lanConns)
 		if aliveCount == 0 {
 			// 等待连接超时
-			if time.Since(startTime) >= time.Duration(config.IOTimeout) {
+			if time.Since(startTime) >= time.Duration(config.WaitTimeout) {
 				return nil, fmt.Errorf("wait relay connection timeout")
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -153,7 +153,7 @@ func (it *RelayServer) takeRelayConn() (net.Conn, error) {
 		it.lanConnsLock.Unlock()
 
 		// 通信前握手
-		err := it.handshaker.WrHandshake(lanConn, config.IOTimeout)
+		err := it.handshaker.WrHandshake(lanConn, config.WaitTimeout)
 		if err != nil {
 			lanConn.Close()
 			it.log.Debug("handshaker error:", err.Error())

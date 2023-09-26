@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"net"
+	"tcp-tunnel/config"
 	"tcp-tunnel/core"
 	"tcp-tunnel/logger"
 	nets "tcp-tunnel/net"
@@ -16,13 +17,13 @@ func Start(argsArr []string, log *logger.Logger) {
 	Usage: {{COMMAND}} CLIENT {{OPTION}}
 
 	* -s, --server-relay-address  # Request to server relay port (Format: ip:port)
-	+ -r, --local-relay-address   # Listen on a port for Client access (Format: ip:port)
+	+ -l, --local-relay-address   # Listen on a port for Client access (Format: ip:port)
 	#                               (Default: 127.0.0.1:80)
-	+ -e, --encrypt-key           # Keep the encrypt-key consistent with the LAN side; if
-	#                               they are not the same, correct transmission will not be
-	#                               possible
+	+ -e, --relay-encrypt-key     # Keep the relay-encrypt-key consistent with the LAN side,
+	#                               if they are not the same, correct transmission will not
+	#                               be possible
 	+ -c, --connect-timeout       # Connection Timeout Duration (Unit: Seconds, Default: 10)
-	?     --help                  # Show Help and Exit
+	? -H, --help                  # Show Help and Exit
 	`
 
 	// 编译模板
@@ -34,21 +35,21 @@ func Start(argsArr []string, log *logger.Logger) {
 
 	// 定义变量
 	var localRelayAddress string
-	var serverOpenedAddress string
-	var encryptKey string
+	var serverRelayAddress string
+	var relayEncryptKey string
 	var connectTimeout int
 
 	// 绑定变量
-	args.StringOption("-r", &localRelayAddress, "127.0.0.1:80")
-	args.StringOption("-s", &serverOpenedAddress, "")
-	args.StringOption("-e", &encryptKey, "")
+	args.StringOption("-l", &localRelayAddress, "127.0.0.1:80")
+	args.StringOption("-s", &serverRelayAddress, "")
+	args.StringOption("-e", &relayEncryptKey, "")
 	args.IntOption("-c", &connectTimeout, 10)
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示帮助
-	if args.Has("--help", false) {
+	if args.HasItem("-H", "--help") {
 		fmt.Println(args.Usage())
 		return
 	}
@@ -65,9 +66,9 @@ func Start(argsArr []string, log *logger.Logger) {
 	}
 
 	// 提取tcp地址
-	serverOpenedAddr, err := net.ResolveTCPAddr("tcp", serverOpenedAddress)
+	serverRelayAddr, err := net.ResolveTCPAddr("tcp", serverRelayAddress)
 	if err != nil {
-		fmt.Println("resolve server opened address error:", err.Error())
+		fmt.Println("resolve server relay address error:", err.Error())
 		return
 	}
 
@@ -91,7 +92,7 @@ func Start(argsArr []string, log *logger.Logger) {
 		if err != nil {
 			break
 		}
-		client, err := MakeClient(*serverOpenedAddr, connectTimeout, encryptKey, log)
+		client, err := MakeClient(*serverRelayAddr, connectTimeout, relayEncryptKey, log)
 		if err != nil {
 			log.Debug("connect to server opened port error", err.Error())
 		}
@@ -100,10 +101,11 @@ func Start(argsArr []string, log *logger.Logger) {
 }
 
 type Client struct {
-	serverAddr     net.TCPAddr
-	connectTimeout int
-	log            *logger.Logger
-	encryptKey     string
+	serverAddr      net.TCPAddr
+	connectTimeout  int
+	log             *logger.Logger
+	encryptKey      string
+	relayHandshaker *core.Handshaker
 }
 
 func MakeClient(serverAddr net.TCPAddr, connectTimeout int, encryptKey string, log *logger.Logger) (*Client, error) {
@@ -112,6 +114,12 @@ func MakeClient(serverAddr net.TCPAddr, connectTimeout int, encryptKey string, l
 		connectTimeout: connectTimeout,
 		log:            log,
 		encryptKey:     encryptKey,
+		relayHandshaker: func() *core.Handshaker {
+			if encryptKey != "" {
+				return core.MakeHandshaker(encryptKey)
+			}
+			return nil
+		}(),
 	}, nil
 }
 
@@ -132,9 +140,15 @@ func (it *Client) handleLocalConn(localConn net.Conn) {
 	// 加解密处理器
 	var cryptor core.Cryptor
 	if it.encryptKey != "" {
-		cryptor, err = core.NewXChaCha20Crypto([]byte(it.encryptKey))
+		cryptor, err = core.NewXChaCha20Crypto(it.encryptKey)
 		if err != nil {
-			it.log.Debug("make chacha20 cryptor error", err.Error())
+			it.log.Debug("make cryptor error", err.Error())
+			return
+		}
+		// 加密连接的握手
+		err = it.relayHandshaker.RwHandshake(serverConn, config.WaitTimeout)
+		if err != nil {
+			it.log.Debug("relay handshake error:", err.Error())
 			return
 		}
 	}

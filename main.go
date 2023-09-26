@@ -37,11 +37,12 @@ func main() {
 	template := `
 	Usage: {{COMMAND}} <MODE> [SCRIPT-FILE] {{OPTION}}
 	
-	# MODE: { LAN, WAN, SCRIPT }
+	# MODE: { LAN, WAN, CLIENT, SCRIPT }
 	
-	#   LAN     Run a LAN client to forward traffic from WAN to the application port
-	#   WAN     Run a WAN server to forward traffic from user clients to LAN client
-	#   SCRIPT  Load a script file to run multiple LAN or WAN side programs.
+	#   LAN     Run a LAN program to forward traffic from WAN to the application port
+	#   WAN     Run a WAN program to forward traffic from user clients to LAN client
+	#   CLIENT  Run a CLIENT program to forward traffic from user clients to WAN client
+	#   SCRIPT  Load a script file to run multiple LAN, WAN or CLIENT side programs.
 
 	# SCRIPT-FILE:
 	
@@ -51,14 +52,14 @@ func main() {
 	#   WAN -s :9982
 	#   LAN -a 10.0.0.1:8081 -s 100.100.100.1:9981 -o :8081 
 	#   LAN -a 10.0.0.1:8082 -s 100.100.100.1:9982 -o :8082
-
-	+ -l, --logger   # Output log to:
+	
+	?  -D, --debug    # Output debug message, There are a lot of logs in debug mode
+	+  -L, --logger   # Output log to:
 	#                    - console: Out to console (Default)
 	#                    - User specified file, like: /var/log/tcprp-out.log
-	? -d, --debug    # Output debug message, There are a lot of logs in debug mode
 
-    ?     --help     # Show Help and Exit
-    ?     --version  # Show Version and Exit
+    ?  -H, --help     # Show Help and Exit
+    ?  -V, --version  # Show Version and Exit
 	`
 
 	// 定义变量
@@ -76,14 +77,14 @@ func main() {
 	// 绑定变量
 	args.StringOperan("MODE", &mode_, "")
 	args.StringOperan("SCRIPT-FILE", &script_, "")
-	args.StringOption("-l", &logger_, "console")
-	args.BoolOption("-d", &debug, false)
+	args.StringOption("-L", &logger_, "console")
+	args.BoolOption("-D", &debug, false)
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示版本
-	if args.Has("--version", false) {
+	if args.HasItem("-V", "--version") {
 		fmt.Println("Version  :", Name, Version)
 		fmt.Println("BuildTime:", BuildTime)
 		fmt.Println("Platform :", Platform)
@@ -92,7 +93,7 @@ func main() {
 	}
 
 	// 显示帮助
-	if args.Has("--help", false) && (mode_ == "" || !strings.Contains(" LAN | WAN | CLIENT | SCRIPT ", strings.ToUpper(mode_))) {
+	if args.HasItem("-H", "--help") && (mode_ == "" || !strings.Contains(" LAN | WAN | CLIENT | SCRIPT ", strings.ToUpper(mode_))) {
 		fmt.Println(args.Usage())
 		return
 	}

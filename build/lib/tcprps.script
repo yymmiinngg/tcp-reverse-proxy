@@ -2,4 +2,4 @@
 
 # Example, Forward all TCP requests on port 80 on this machine to port 8080
 WAN -b 0.0.0.0:3390
-LAN -a 127.0.0.1:8080 -s 127.0.0.1:3390 -o 80
+LAN -a 127.0.0.1:8080 -s 127.0.0.1:3390 -o :80

@@ -1,19 +1,14 @@
 package core
 
 import (
-	"fmt"
+	"crypto/md5"
+	"io"
 	"sync"
 
 	"golang.org/x/crypto/chacha20"
 )
 
 const (
-	// KeySizeAuto KeySizeAuto
-	KeySizeAuto int = 0
-	// KeySize128 KeySize128
-	KeySize128 int = 16
-	// KeySize192 KeySize192
-	KeySize192 int = 24
 	// KeySize256 KeySize256
 	KeySize256 int = 32
 )
@@ -24,30 +19,14 @@ type Cryptor interface {
 	Decrypt(src, dest []byte)
 }
 
-// ToCryptKey ToCryptKey
-func ToCryptKey(key []byte, keySize int) []byte {
-	if len(key) == 0 {
-		key = []byte(" ")
-	}
+// toCryptKey toCryptKey
+func toCryptKey(key string, keySize int) string {
 	keyLen := len(key)
-	switch keySize {
-	case KeySizeAuto:
-		if keyLen < KeySize128 {
-			keySize = KeySize128
-		} else if keyLen < KeySize192 {
-			keySize = KeySize192
-		} else {
-			keySize = KeySize256
-		}
-	case KeySize128, KeySize192, KeySize256:
-	default:
-		panic(fmt.Errorf("unsupported keysize %d", keySize))
-	}
 	cryptKey := make([]byte, keySize)
 	for i := 0; i < keySize; i++ {
 		cryptKey[i] = key[i%keyLen]
 	}
-	return cryptKey
+	return string(cryptKey)
 }
 
 // ChaCha20Cryptor ChaCha20Cryptor
@@ -73,20 +52,23 @@ func (c *ChaCha20Cryptor) Decrypt(src, dest []byte) {
 }
 
 // NewXChaCha20Crypto NewXChaCha20Crypto
-func NewXChaCha20Crypto(key []byte) (*ChaCha20Cryptor, error) {
-	realKey := ToCryptKey(key, KeySize256)
+func NewXChaCha20Crypto(key string) (*ChaCha20Cryptor, error) {
+	realKey := toCryptKey(key, KeySize256)
 	return newChaCha20Crypto(realKey)
 }
 
 // NewChaCha20Crypto NewChaCha20Crypto
-func newChaCha20Crypto(key []byte) (*ChaCha20Cryptor, error) {
+func newChaCha20Crypto(key string) (*ChaCha20Cryptor, error) {
 	var enCipher, deCipher *chacha20.Cipher
 	var err error
-	enCipher, err = chacha20.NewUnauthenticatedCipher(key, []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11})
+	h := md5.New()
+	io.WriteString(h, "2e8fvx6zbyf40ut"+key)
+	iv := h.Sum(nil)[:12]
+	enCipher, err = chacha20.NewUnauthenticatedCipher([]byte(key), iv)
 	if err != nil {
 		return nil, err
 	}
-	deCipher, err = chacha20.NewUnauthenticatedCipher(key, []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11})
+	deCipher, err = chacha20.NewUnauthenticatedCipher([]byte(key), iv)
 	if err != nil {
 		return nil, err
 	}

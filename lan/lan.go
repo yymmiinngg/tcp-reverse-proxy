@@ -3,6 +3,7 @@ package lan
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"tcp-tunnel/logger"
 
 	"github.com/yymmiinngg/goargs"
@@ -14,9 +15,10 @@ func Start(argsArr []string, log *logger.Logger) {
 
 	+ -a, --application-address  # Mapped TCP Address for the Application, (Format: ip:port,
 	#                              Default: 127.0.0.1:80)
-	* -s, --server-address       # Listen on a port for Client binding (Format: ip:port)
-	+ -o, --open-port            # Instruct the server to open a port for relay traffic to
-	#                              the client (Default is the same of application-address)
+	* -s, --server-bind-address  # Listen on a port for Client binding (Format: ip:port)
+	+ -o, --open-address         # Instruct the server to open a port for relay traffic to
+	#                              the client (Format: ip:port, Default is the same port of 
+	#                              application-address, like ":port")
 	
 	+ -r, --ready-connection     # Ready Connection Count (Default: 5), Ready connections
 	#                              help improve client connection speed. The quantity limit
@@ -24,16 +26,18 @@ func Start(argsArr []string, log *logger.Logger) {
 	+ -c, --connect-timeout      # Connection Timeout Duration (Unit: Seconds, Default: 10)
 	+ -i, --io-timeout           # Read/Write Timeout Duration in relaying (Unit: Seconds,
 	#                              Default: 120)
+    + -K, --keepalive            # Keepalive seconds, use to keep tcp connection always alive
+	#                              (Default: 120)
 
-	+ -k, --handshake-key        # Handshake Key, Preventing Unauthorized Use of WAN Port
+	+ -k, --bind-handshake-key   # Handshake Key, Preventing Unauthorized Use of WAN Port
     + -e, --encrypt-key          # The key is used to encrypt the traffic. When the LAN side
 	#                              uses the key, direct connections from client applications
 	#                              to open ports on the WAN side will fail because the
 	#                              traffic is encrypted, and the CLIENT side needs to decrypt
 	#                              the traffic
-	? -T, --tls                  # Use tls bind
+	? -T, --tls                  # Use tls connect when WAN program used x509-certificate
 
-	?     --help                 # Show Help and Exit
+	? -H, --help                 # Show Help and Exit
 	`
 
 	// 编译模板
@@ -46,20 +50,22 @@ func Start(argsArr []string, log *logger.Logger) {
 	// 定义变量
 	var applicationAddress string
 	var serverAddress string
-	var openPort int
-	var handshakeKey string
-	var readyConnection, connectTimeout, ioTimeout int
+	var openAddress string
+	var bindHandshakeKey string
+	var readyConnection, connectTimeout, relayIoTimeout int
 	var tls bool
 	var encryptKey string
+	var keepaliveConnection int
 
 	// 绑定变量
 	args.StringOption("-a", &applicationAddress, "127.0.0.1:80")
 	args.StringOption("-s", &serverAddress, "")
-	args.IntOption("-o", &openPort, 0)
+	args.StringOption("-o", &openAddress, "")
 	args.IntOption("-r", &readyConnection, 5)
 	args.IntOption("-c", &connectTimeout, 10)
-	args.IntOption("-i", &ioTimeout, 120)
-	args.StringOption("-k", &handshakeKey, "")
+	args.IntOption("-i", &relayIoTimeout, 120)
+	args.IntOption("-K", &keepaliveConnection, 120)
+	args.StringOption("-k", &bindHandshakeKey, "")
 	args.BoolOption("-T", &tls, false)
 	args.StringOption("-e", &encryptKey, "")
 
@@ -67,7 +73,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示帮助
-	if args.Has("--help", false) {
+	if args.HasItem("-H", "--help") {
 		fmt.Println(args.Usage())
 		return
 	}
@@ -93,7 +99,7 @@ func Start(argsArr []string, log *logger.Logger) {
 		return
 	}
 
-	if ioTimeout == 0 {
+	if relayIoTimeout == 0 {
 		fmt.Println("The io timeout duration cannot be less than 1")
 		return
 	}
@@ -113,17 +119,18 @@ func Start(argsArr []string, log *logger.Logger) {
 	}
 
 	// 默认与应用的端口一致
-	if openPort == 0 {
-		openPort = applicationAddr.Port
+	if openAddress == "" {
+		openAddress = ":" + strconv.Itoa(applicationAddr.Port)
 	}
 
 	StartClient(serverAddr,
-		openPort,
+		openAddress,
 		applicationAddr,
-		handshakeKey,
+		bindHandshakeKey,
 		readyConnection,
 		connectTimeout,
-		ioTimeout,
+		relayIoTimeout,
+		keepaliveConnection,
 		log,
 		tls,
 		encryptKey,

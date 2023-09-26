@@ -9,16 +9,16 @@ import (
 )
 
 type BindServer struct {
-	bindAddress *net.TCPAddr
-	ioTimeout   int
-	handshake   *core.Handshaker
-	log         *logger.Logger
+	bindAddress   *net.TCPAddr
+	ioTimeout     int
+	bindHandshake *core.Handshaker
+	log           *logger.Logger
 }
 
 func StartBindServer(
 	bindAddress *net.TCPAddr,
 	ioTimeout int,
-	handshakeKey string,
+	bindHandshakeKey string,
 	log *logger.Logger,
 	tlsCertificate string,
 	tlsPrivateKey string,
@@ -26,10 +26,10 @@ func StartBindServer(
 
 	// 实例化
 	it := &BindServer{
-		bindAddress: bindAddress,
-		ioTimeout:   ioTimeout,
-		handshake:   core.MakeHandshaker(handshakeKey),
-		log:         log,
+		bindAddress:   bindAddress,
+		ioTimeout:     ioTimeout,
+		bindHandshake: core.MakeHandshaker(bindHandshakeKey),
+		log:           log,
 	}
 
 	if tlsCertificate != "" {
@@ -78,9 +78,9 @@ func (it *BindServer) handleBindConn(bindConn net.Conn) {
 	defer bindConn.Close()
 
 	// 通信前握手
-	err := it.handshake.WrHandshake(bindConn, config.IOTimeout)
+	err := it.bindHandshake.WrHandshake(bindConn, config.WaitTimeout)
 	if err != nil {
-		it.log.Debug("handshaker error:", err.Error())
+		it.log.Debug("bind handshaker error:", err.Error())
 		return
 	}
 
@@ -120,13 +120,14 @@ func (it *BindServer) handleBindConn(bindConn net.Conn) {
 	// 长连接，断开则关闭代理
 	func() {
 		defer bindConn.Close()
-		buff := make([]byte, 32)
+		buff := make([]byte, 64)
 		for {
-			_, err := bindConn.Read(buff)
+			size, err := bindConn.Read(buff)
 			if err != nil {
 				it.log.Debug("break bind:", err.Error())
 				break
 			}
+			bindConn.Write(buff[:size])
 		}
 	}()
 }

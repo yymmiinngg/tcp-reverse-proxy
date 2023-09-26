@@ -52,10 +52,10 @@ function Start {
         chmod +x $cmdDir/$cmd
         echo "" >> $cmdDir/tcprps.console
         echo "[$time]" >> $cmdDir/tcprps.console
-        echo "$cmdDir/$cmd script \"$scriptFile\" -l \"$logFile\" $options" >> $cmdDir/tcprps.console
+        echo "$cmdDir/$cmd script \"$scriptFile\" --logger \"$logFile\" $options" >> $cmdDir/tcprps.console
         d=$(pwd)
         cd $cmdDir
-        nohup $cmdDir/$cmd script "$scriptFile" -l "$logFile" $options >> $cmdDir/tcprps.console 2>&1 &
+        nohup $cmdDir/$cmd script "$scriptFile" --logger "$logFile" $options >> $cmdDir/tcprps.console 2>&1 &
         cd $d
         sleep 1
         if [ "$(Pid)" != "" ]; then

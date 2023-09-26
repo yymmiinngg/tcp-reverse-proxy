@@ -1,6 +1,5 @@
 package config
 
 const (
-	IOTimeout = 10
-	KeepAlive = 30
+	WaitTimeout = 10
 )

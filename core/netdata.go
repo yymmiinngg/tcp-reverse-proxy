@@ -16,7 +16,7 @@ type Response struct {
 type BindRequest struct {
 	Reqeust
 	ClientName string `json:"clientName"`
-	OpenPort   int    `json:"openPort"`
+	OpenPort   string `json:"openPort"`
 }
 
 type BindResponse struct {
