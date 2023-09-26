@@ -27,6 +27,7 @@ type Client struct {
 
 	handshaker *core.Handshaker
 	log        *logger.Logger
+	encryptKey string
 
 	// 待命连接计数
 	readyConnect int
@@ -43,6 +44,7 @@ func StartClient(
 	relayIoTimeout int,
 	log *logger.Logger,
 	useTls bool,
+	encryptKey string,
 ) {
 
 	it := &Client{
@@ -56,6 +58,7 @@ func StartClient(
 		applicationAddress: applicationAddress,
 		log:                log,
 		handshaker:         core.MakeHandshaker(handshakerKey),
+		encryptKey:         encryptKey,
 	}
 
 	// 循环重试（直到绑定到服务端）
@@ -232,7 +235,16 @@ func (it *Client) startRelay(bundle *relayConnectionBundle) {
 
 	// 转发
 	it.log.Debug("relay", bundle.relayConn.LocalAddr().String(), "<->", applicationConn.LocalAddr().String())
-	nets.Relay(bundle.relayConn, applicationConn, it.relayIoTimeout)
+	// 加解密处理器
+	var cryptor core.Cryptor
+	if it.encryptKey != "" {
+		cryptor, err = core.NewXChaCha20Crypto([]byte(it.encryptKey))
+		if err != nil {
+			it.log.Debug("make chacha20 cryptor error", err.Error())
+			return
+		}
+	}
+	nets.Relay(applicationConn, bundle.relayConn, it.relayIoTimeout, cryptor)
 }
 
 func (it *Client) addReady() {

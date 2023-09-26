@@ -174,5 +174,5 @@ func (it *RelayServer) relay(clientConn, lanConn net.Conn) {
 
 	//  转发
 	it.log.Debug("relay", clientConn.RemoteAddr().String(), "<->", lanConn.RemoteAddr().String())
-	nets.Relay(clientConn, lanConn, it.relayIoTimeout)
+	nets.Relay(lanConn, clientConn, it.relayIoTimeout, nil)
 }

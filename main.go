@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"tcp-tunnel/client"
 	"tcp-tunnel/lan"
 	"tcp-tunnel/logger"
 	"tcp-tunnel/wan"
@@ -56,8 +57,8 @@ func main() {
 	#                    - User specified file, like: /var/log/tcprp-out.log
 	? -d, --debug    # Output debug message, There are a lot of logs in debug mode
 
-    ? -h, --help     # Show Help and Exit
-    ? -v, --version  # Show Version and Exit
+    ?     --help     # Show Help and Exit
+    ?     --version  # Show Version and Exit
 	`
 
 	// 定义变量
@@ -82,7 +83,7 @@ func main() {
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示版本
-	if args.Has("-v", false) {
+	if args.Has("--version", false) {
 		fmt.Println("Version  :", Name, Version)
 		fmt.Println("BuildTime:", BuildTime)
 		fmt.Println("Platform :", Platform)
@@ -91,7 +92,7 @@ func main() {
 	}
 
 	// 显示帮助
-	if args.Has("-h", false) && (mode_ == "" || !strings.Contains(" LAN | WAN | SCRIPT ", strings.ToUpper(mode_))) {
+	if args.Has("--help", false) && (mode_ == "" || !strings.Contains(" LAN | WAN | CLIENT | SCRIPT ", strings.ToUpper(mode_))) {
 		fmt.Println(args.Usage())
 		return
 	}
@@ -115,6 +116,8 @@ func main() {
 			lan.Start(argsarr, log)
 		} else if strings.ToLower(mode) == "wan" {
 			wan.Start(argsarr, log)
+		} else if strings.ToLower(mode) == "client" {
+			client.Start(argsarr, log)
 		} else if strings.ToLower(mode) == "script" {
 			fmt.Printf("Can't run script mode in script file\n")
 			os.Exit(1)

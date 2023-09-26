@@ -31,8 +31,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	+ -C, --tls-x509-certificate  # The Certificate of tls
 	+ -K, --tls-x509-key          # The private key of tls
 
-    ? -h, --help                  # Show Help and Exit
-    ? -v, --version               # Show Version and Exit
+    ?     --help                  # Show Help and Exit
 `
 
 	// 定义变量
@@ -60,7 +59,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示帮助
-	if args.Has("-h", false) {
+	if args.Has("--help", false) {
 		fmt.Println(args.Usage())
 		return
 	}

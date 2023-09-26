@@ -24,7 +24,7 @@ func MakeHandshaker(key string) *Handshaker {
 }
 
 func (it *Handshaker) makeHandshake(data []byte) [HandshakeDataLength]byte {
-	iv := randBytes(32)
+	iv := RandBytes(32)
 	tmp := []byte{}
 	tmp = append(tmp, iv...)
 	tmp = append(tmp, []byte(it.UserKey)...)
@@ -107,7 +107,7 @@ func getSha256(data []byte) []byte {
 	return m.Sum(nil)
 }
 
-func randBytes(len int) (randbs []byte) {
+func RandBytes(len int) (randbs []byte) {
 	randBytes := make([]byte, len)
 	_, err := io.ReadFull(rand.Reader, randBytes)
 	if err != nil {

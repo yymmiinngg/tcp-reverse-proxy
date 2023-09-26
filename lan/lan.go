@@ -17,18 +17,23 @@ func Start(argsArr []string, log *logger.Logger) {
 	* -s, --server-address       # Listen on a port for Client binding (Format: ip:port)
 	+ -o, --open-port            # Instruct the server to open a port for relay traffic to
 	#                              the client (Default is the same of application-address)
+	
 	+ -r, --ready-connection     # Ready Connection Count (Default: 5), Ready connections
 	#                              help improve client connection speed. The quantity limit
 	#                              is 1024.
 	+ -c, --connect-timeout      # Connection Timeout Duration (Unit: Seconds, Default: 10)
 	+ -i, --io-timeout           # Read/Write Timeout Duration in relaying (Unit: Seconds,
 	#                              Default: 120)
-	+ -k, --handshake-key        # Handshake Key, Preventing Unauthorized Use of WAN Port
 
+	+ -k, --handshake-key        # Handshake Key, Preventing Unauthorized Use of WAN Port
+    + -e, --encrypt-key          # The key is used to encrypt the traffic. When the LAN side
+	#                              uses the key, direct connections from client applications
+	#                              to open ports on the WAN side will fail because the
+	#                              traffic is encrypted, and the CLIENT side needs to decrypt
+	#                              the traffic
 	? -T, --tls                  # Use tls bind
 
-	? -h, --help                 # Show Help and Exit
- 	? -v, --version              # Show Version and Exit
+	?     --help                 # Show Help and Exit
 	`
 
 	// 编译模板
@@ -45,6 +50,7 @@ func Start(argsArr []string, log *logger.Logger) {
 	var handshakeKey string
 	var readyConnection, connectTimeout, ioTimeout int
 	var tls bool
+	var encryptKey string
 
 	// 绑定变量
 	args.StringOption("-a", &applicationAddress, "127.0.0.1:80")
@@ -55,19 +61,14 @@ func Start(argsArr []string, log *logger.Logger) {
 	args.IntOption("-i", &ioTimeout, 120)
 	args.StringOption("-k", &handshakeKey, "")
 	args.BoolOption("-T", &tls, false)
+	args.StringOption("-e", &encryptKey, "")
 
 	// 处理参数
 	err = args.Parse(argsArr, goargs.AllowUnknowOption)
 
 	// 显示帮助
-	if args.HasItem("-h", "--help") {
+	if args.Has("--help", false) {
 		fmt.Println(args.Usage())
-		return
-	}
-
-	// 显示版本
-	if args.HasItem("-v", "--version") {
-		fmt.Println("v0.0.1")
 		return
 	}
 
@@ -125,5 +126,6 @@ func Start(argsArr []string, log *logger.Logger) {
 		ioTimeout,
 		log,
 		tls,
+		encryptKey,
 	)
 }
