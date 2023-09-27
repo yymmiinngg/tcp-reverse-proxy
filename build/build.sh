@@ -23,6 +23,10 @@ printf "  GOARCH=%s # { amd64 | 386 | arm | arm64 }\n" "$GOARCH"
 
 echo "Building..."
 appName=tcprp
+if [ "$GOOS" == "windows" ]; then
+     appName="$appName".exe
+fi
+
 appVersion=$(git describe --tags 2>/dev/null || date +"%Y%m%d%H%M%S")
 appPlatform=$GOOS-$GOARCH
 appBuildTime=$(date)
