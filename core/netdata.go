@@ -30,7 +30,7 @@ type UnBindRequest struct {
 	ClientName string `json:"clientName"`
 }
 
-func ReadAny(r io.Reader, obj any) error {
+func ReadJson2Object(r io.Reader, obj any) error {
 	buff := make([]byte, 0, 1024)
 	tmp := make([]byte, 1)
 	count := 0
@@ -48,7 +48,7 @@ func ReadAny(r io.Reader, obj any) error {
 	return json.Unmarshal(buff[:count], obj)
 }
 
-func WriteAny(w io.Writer, obj any) error {
+func WriteObject2Json(w io.Writer, obj any) error {
 	jsonData, err := json.Marshal(obj)
 	if err != nil {
 		return err

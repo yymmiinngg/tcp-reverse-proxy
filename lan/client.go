@@ -121,7 +121,7 @@ func (it *Client) connectAndBind(useTls bool, bindCloseCallback func()) *core.Bi
 	}
 
 	// 发送绑定请求
-	if err := core.WriteAny(bindConn, &core.BindRequest{
+	if err := core.WriteObject2Json(bindConn, &core.BindRequest{
 		Reqeust:    core.Reqeust{Action: "bind"},
 		ClientName: bindConn.LocalAddr().String(),
 		OpenPort:   it.openPort,
@@ -133,7 +133,7 @@ func (it *Client) connectAndBind(useTls bool, bindCloseCallback func()) *core.Bi
 
 	// 读取bind命令
 	bindResponse := &core.BindResponse{}
-	if err := core.ReadAny(bindConn, &bindResponse); err != nil {
+	if err := core.ReadJson2Object(bindConn, &bindResponse); err != nil {
 		it.log.Error(err, "read bind response error")
 		bindConn.Close()
 		return nil

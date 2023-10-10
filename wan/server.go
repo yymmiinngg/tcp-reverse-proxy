@@ -86,7 +86,7 @@ func (it *BindServer) handleBindConn(bindConn net.Conn) {
 
 	// 读取bind命令
 	bindRequest := &core.BindRequest{}
-	if err := core.ReadAny(bindConn, &bindRequest); err != nil {
+	if err := core.ReadJson2Object(bindConn, &bindRequest); err != nil {
 		it.log.Debug("read bind request error:", err.Error())
 		return
 	}
@@ -106,7 +106,7 @@ func (it *BindServer) handleBindConn(bindConn net.Conn) {
 	}
 
 	// 响应绑定连接
-	err = core.WriteAny(bindConn, &core.BindResponse{
+	err = core.WriteObject2Json(bindConn, &core.BindResponse{
 		Response:     core.Response{Message: "success"},
 		ClientName:   bindRequest.ClientName,
 		RelayPort:    relayAddr.Port, // 这里传端口是为了避免回传内网地址
